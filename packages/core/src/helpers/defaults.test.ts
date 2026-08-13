@@ -1,7 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import { DEFAULT_SETTINGS } from "../schemas/settings.ts";
 import type { Settings } from "../schemas/settings.ts";
-import { createEmptyProject, deriveStatus, sceneAudioHash } from "./defaults.ts";
+import {
+  createEmptyProject,
+  deriveStatus,
+  isSceneAudioStale,
+  sceneAudioHash,
+  scenesNeedingAudio,
+} from "./defaults.ts";
 
 const settings: Settings = { projectsRoot: "/tmp/videostudio", ...DEFAULT_SETTINGS };
 
@@ -104,5 +110,57 @@ describe("deriveStatus", () => {
     };
     expect(deriveStatus(project, "deadbeef")).toBe("rendered");
     expect(deriveStatus(project, "somethingelse")).toBe("ready");
+  });
+});
+
+describe("isSceneAudioStale / scenesNeedingAudio", () => {
+  test("a scene with no audio is stale", () => {
+    const project = makeProject();
+    project.scenes[0]!.text = "hello world";
+    expect(isSceneAudioStale(project.scenes[0]!, project.voice)).toBe(true);
+  });
+
+  test("an empty scene is never stale — there's nothing to say", () => {
+    const project = makeProject();
+    expect(isSceneAudioStale(project.scenes[0]!, project.voice)).toBe(false);
+    expect(scenesNeedingAudio(project)).toHaveLength(0);
+  });
+
+  test("audio matching the current text and voice is fresh", () => {
+    const project = makeProject();
+    project.scenes[0]!.text = "hello world";
+    project.scenes[0]!.audio = {
+      file: "audio/vo/x.mp3",
+      durationMs: 1000,
+      hash: sceneAudioHash("hello world", project.voice),
+    };
+    expect(isSceneAudioStale(project.scenes[0]!, project.voice)).toBe(false);
+  });
+
+  test("changing the voice makes existing audio stale", () => {
+    const project = makeProject();
+    project.scenes[0]!.text = "hello world";
+    project.scenes[0]!.audio = {
+      file: "audio/vo/x.mp3",
+      durationMs: 1000,
+      hash: sceneAudioHash("hello world", project.voice),
+    };
+    project.voice = { ...project.voice, voiceId: "a-different-voice" };
+    expect(isSceneAudioStale(project.scenes[0]!, project.voice)).toBe(true);
+  });
+
+  test("only stale scenes are returned for synthesis", () => {
+    const project = makeProject();
+    project.scenes = [
+      { ...project.scenes[0]!, id: "a", text: "fresh one" },
+      { ...project.scenes[0]!, id: "b", text: "needs audio" },
+      { ...project.scenes[0]!, id: "c", text: "" },
+    ];
+    project.scenes[0]!.audio = {
+      file: "audio/vo/a.mp3",
+      durationMs: 900,
+      hash: sceneAudioHash("fresh one", project.voice),
+    };
+    expect(scenesNeedingAudio(project).map((s) => s.id)).toEqual(["b"]);
   });
 });

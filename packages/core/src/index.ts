@@ -3,6 +3,7 @@ export * from "./schemas/asset.ts";
 export * from "./schemas/job.ts";
 export * from "./schemas/settings.ts";
 export * from "./schemas/manifest.ts";
+export * from "./schemas/tts.ts";
 export * from "./schemas/api.ts";
 
 export * from "./helpers/slug.ts";

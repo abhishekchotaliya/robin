@@ -78,13 +78,22 @@ Schemas live in `src/schemas/{project,asset,job,settings,manifest,api}.ts`, help
 - **Radix `DropdownMenu` fights programmatic focus after closing.** It returns focus to its trigger button on close via its own internal timing, which runs *after* a naive `autoFocus` or `requestAnimationFrame`-based focus call on something the menu item just revealed (e.g. an inline rename `<Input>`) — the two race, Radix wins, and the thing you meant to focus blurs itself almost immediately. Fix: pass `onCloseAutoFocus={(e) => e.preventDefault()}` to the `DropdownMenuContent` whenever a menu item hands off focus to something else (inline edit, a dialog it opens). See `components/project-card.tsx` for the pattern (rename-in-place + delete confirmation both hang off the same menu).
 - Every async mutation shows a pending state on its own trigger and a `sonner` toast on failure (success toasts only for direct user actions — create/delete — never for autosave). Every list has designed loading/empty/error states — copy the pattern in `routes/projects-list.tsx`.
 - **Autosave, never a Save button** (`hooks/useProjectEditor.ts`): 800ms debounce, flush on blur/unmount, Cmd+S forces an immediate save, `<SaveIndicator>` reports it. Two rules that matter: the local `draft` is authoritative once loaded and is **not** re-hydrated on every server response (our own PATCH responses land while the user is still typing and would clobber in-flight keystrokes — it re-hydrates only when the project id changes); and a failed PATCH puts its patch **back** into the pending buffer so the next flush retries it rather than silently dropping the edit.
-  - **Consequence to remember**: any endpoint that mutates `project.json` server-side (asset delete clearing scene refs today; TTS writing `scene.audio` in phase 4) leaves the open editor showing stale data, because the draft won't pick it up. Mirror the same change into the draft client-side — see `onAssetDeleted` in `routes/project-detail.tsx`. Invalidating the query alone is not enough.
+  - **Consequence to remember**: any endpoint that mutates `project.json` server-side (asset delete clearing scene refs, a TTS job writing `scene.audio`) leaves the open editor showing stale data, because the draft won't pick it up. Invalidating the query alone is not enough. Two ways to fix it, both in use: mirror the change into the draft client-side (`onAssetDeleted` in `routes/project-detail.tsx`), or call `reloadFromServer()` from the editor once the job finishes (what the TTS job does). `reloadFromServer` deliberately refuses to run while local edits are pending, so it can't clobber unsaved keystrokes.
 - Editing logic that can live in a pure function belongs in `packages/core`, not a component — `moveScene`/`reindexScenes`/`splitTextIntoScenes` are all unit-tested there, leaving `scene-rail.tsx`'s drop handler two lines. `Scene.order` must always match array position; call `reindexScenes` after any insert/delete/reorder.
 - **`react-resizable-panels` v4**: the group prop is `orientation`, not `direction`, and **bare numeric sizes mean pixels** — `defaultSize="22%"` (a string) for percent. `defaultSize={22} maxSize={40}` silently renders a 40px-wide panel.
 - shadcn's `Textarea` already carries `field-sizing-content`, so it grows with its content natively. Don't add manual `scrollHeight` auto-grow on top — with `overflow:hidden` the measurement resolves against the flex container and the box balloons to full viewport height.
 - `react-hook-form` + `@hookform/resolvers/zod` + the shared core schema for forms needing validation (see `components/new-project-dialog.tsx`). **Version pin matters**: `@hookform/resolvers` requires `react-hook-form ^7.55.0`, and only `@hookform/resolvers ^5.x` supports Zod 4 — both are pinned correctly in `apps/studio/package.json`; don't downgrade either without checking the other.
 
-## Pipeline (Phases 4–8 — not built yet as of Phase 1)
+## Jobs (`apps/server/src/jobs/queue.ts`)
+
+In-memory FIFO, one job at a time, progress pushed over SSE (`routes/jobs.ts`) — long operations are never a blocking request. `enqueueJob(projectId, run)` returns immediately with a job the client watches at `/api/jobs/:id/stream`. Jobs are deliberately **not persisted**: an unfinished job means nothing after a restart, and every step is content-hash cached so re-running is cheap. Runners take a `JobContext` (`setStep`/`setProgress`/`log`/`throwIfCancelled`) and should call `throwIfCancelled()` between units of work so cancel is responsive. Phase 8 runs the full render pipeline through this same queue.
+
+## Native binaries — read before adding another
+
+- **Do not use `ffprobe-static`.** It ships an **x86_64** binary inside its `darwin/arm64` folder, so it dies with `bad CPU type in executable` on Apple Silicon unless Rosetta happens to be installed. Use `@ffprobe-installer/ffprobe`, which publishes a real per-architecture binary as an optional dependency. Assume `ffmpeg-static` may have the same defect and verify with `file $(…path)` before relying on it in phase 6 — `@ffmpeg-installer/ffmpeg` is the equivalent fallback.
+- These installer packages set the executable bit in a `postinstall` (`chmod u+x`), which **Bun blocks unless the package is in root `trustedDependencies`** — both the wrapper and each platform package are listed there. Without the entry you get a confusing `EACCES`/permission-denied at runtime rather than a failure at install time. Verify a new binary with `file <path>` and `<path> -version` before writing code against it.
+
+## Pipeline (Phases 5–8 — TTS/probe done, rest not built yet)
 
 Seven-step server-side job, every step content-hash-cached:
 
@@ -100,16 +109,11 @@ Seven-step server-side job, every step content-hash-cached:
 
 Known gotchas for when these phases get built: whisper.cpp needs **16kHz mono WAV** input, silently garbage otherwise — convert with ffmpeg first, and transcribe the *same* concatenated-with-gaps audio the timeline uses so word timestamps line up. The mix step (6) is one FFmpeg filter graph — concat with 300ms gaps → loop/trim BGM → `sidechaincompress` to duck under speech → `amix` → `loudnorm` to **-14 LUFS** (YouTube's target) → single `master.wav`. Remotion should only ever see that one audio file, never the individual VO clips.
 
-## Provider interfaces (Phase 4+, define even with one implementation)
+## Providers (`apps/server/src/providers/`)
 
-```ts
-TTSProvider    { id, listVoices(), synthesize(text, opts) → Buffer }
-ImageProvider  { id, generate(prompt, opts) → Asset }   // stub until needed
-VideoProvider  { id, generate(prompt, opts) → Asset }   // stub until needed
-StockProvider  { id, search(query) → Asset[] }          // stub until needed
-```
+All four capability interfaces live in `types.ts` (TTS implemented; Image/Video/Stock defined but unimplemented). Each carries `isConfigured(settings)` so the UI can ask whether a key is present without ever seeing it. Registered by `providerId` in `registry.ts` — adding a provider is a new file plus one registry line, never a change to `services/`.
 
-Registered in a map keyed by `providerId` in `providers/registry.ts`. Adding a new one is a new file plus a registry entry — never a change to `services/`.
+`tts/elevenlabs.ts` is the reference implementation. Two things worth copying: it maps provider HTTP failures onto our own error codes with messages a user can act on (401 → "check the key in Settings", 429 → rate limit) instead of leaking a raw response into a 500; and note the endpoints straddle versions — synthesis is `/v1/text-to-speech/{voice_id}`, voice listing is `/v2/voices`. Not a typo.
 
 ## Verification
 

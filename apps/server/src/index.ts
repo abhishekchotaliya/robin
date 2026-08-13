@@ -5,7 +5,10 @@ import { ApiHttpError } from "./lib/errors.ts";
 import { assetsRoutes } from "./routes/assets.ts";
 import { filesRoutes } from "./routes/files.ts";
 import { healthRoutes } from "./routes/health.ts";
+import { jobsRoutes } from "./routes/jobs.ts";
 import { projectsRoutes } from "./routes/projects.ts";
+import { settingsRoutes } from "./routes/settings.ts";
+import { ttsRoutes } from "./routes/tts.ts";
 
 await ensureProjectsRoot();
 
@@ -22,9 +25,12 @@ app.onError((err, c) => {
 });
 
 app.route("/api/health", healthRoutes);
-// assetsRoutes owns /api/projects/:id/assets — mounted first so its more
-// specific paths win over the projects router's /:id handlers.
+app.route("/api/settings", settingsRoutes);
+app.route("/api/jobs", jobsRoutes);
+// assetsRoutes and ttsRoutes own sub-paths of /api/projects/:id — mounted
+// first so their more specific paths win over the projects router's /:id.
 app.route("/api/projects", assetsRoutes);
+app.route("/api/projects", ttsRoutes);
 app.route("/api/projects", projectsRoutes);
 app.route("/files", filesRoutes);
 

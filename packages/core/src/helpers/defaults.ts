@@ -44,6 +44,19 @@ export function sceneAudioHash(text: string, voice: Project["voice"]): string {
   return hashContent(text, voice.providerId, voice.voiceId, String(voice.speed), String(voice.stability));
 }
 
+// A scene needs (re)synthesis when it has no audio yet, or when its text or
+// voice settings changed since the audio was produced. Used by the TTS
+// service to decide what to skip and by the UI to label the generate button.
+export function isSceneAudioStale(scene: Scene, voice: Project["voice"]): boolean {
+  if (scene.text.trim().length === 0) return false; // nothing to say
+  if (!scene.audio) return true;
+  return scene.audio.hash !== sceneAudioHash(scene.text, voice);
+}
+
+export function scenesNeedingAudio(project: Project): Scene[] {
+  return project.scenes.filter((scene) => isSceneAudioStale(scene, project.voice));
+}
+
 export const DEFAULT_SCENE_COLOR = "#18181b";
 
 // Used by createEmptyProject, the "add scene" button, and split-into-scenes.

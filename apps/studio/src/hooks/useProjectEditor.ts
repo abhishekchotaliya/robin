@@ -6,7 +6,9 @@ import {
   type Scene,
   type UpdateProjectRequest,
 } from "@app/core";
+import { useQueryClient } from "@tanstack/react-query";
 import { useProject, useUpdateProject } from "@/hooks/useProjects.ts";
+import { api } from "@/lib/api.ts";
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
 
@@ -23,6 +25,7 @@ const DEBOUNCE_MS = 800;
 export function useProjectEditor(projectId: string) {
   const { data: serverProject, isLoading, isError, error } = useProject(projectId);
   const updateProject = useUpdateProject(projectId);
+  const queryClient = useQueryClient();
 
   const [draft, setDraft] = useState<Project | null>(null);
   const [status, setStatus] = useState<SaveStatus>("idle");
@@ -91,6 +94,22 @@ export function useProjectEditor(projectId: string) {
     [],
   );
 
+  /**
+   * Pulls the server's copy back into the draft after something OTHER than
+   * this editor changed the project — a TTS job writing scene.audio, an
+   * asset delete clearing references. Refuses to run while local edits are
+   * still pending, since the server copy would clobber unsaved keystrokes.
+   */
+  const reloadFromServer = useCallback(async () => {
+    if (Object.keys(pendingRef.current).length > 0) return;
+    const fresh = await queryClient.fetchQuery({
+      queryKey: ["projects", projectId],
+      queryFn: () => api.getProject(projectId),
+    });
+    if (Object.keys(pendingRef.current).length > 0) return; // raced with typing
+    setDraft(fresh);
+  }, [projectId, queryClient]);
+
   const setScenes = useCallback(
     (next: Scene[]) => {
       update({ scenes: reindexScenes(next) });
@@ -138,5 +157,6 @@ export function useProjectEditor(projectId: string) {
     updateScene,
     addScene,
     deleteScene,
+    reloadFromServer,
   };
 }

@@ -16,7 +16,9 @@ import { SaveIndicator } from "@/components/save-indicator.tsx";
 import { SceneRail } from "@/components/scene-rail.tsx";
 import { ScriptTab } from "@/components/script-tab.tsx";
 import { MediaTab } from "@/components/media-tab.tsx";
+import { AudioTab } from "@/components/audio-tab.tsx";
 import { useAssets } from "@/hooks/useAssets.ts";
+import { useJobStream } from "@/hooks/useJob.ts";
 import { ComingSoon } from "@/components/coming-soon.tsx";
 import { useProjectEditor } from "@/hooks/useProjectEditor.ts";
 import { useUIStore } from "@/stores/ui.ts";
@@ -28,7 +30,21 @@ export function ProjectDetailPage() {
   const { id = "" } = useParams<{ id: string }>();
   const editor = useProjectEditor(id);
   const { data: assets } = useAssets(id);
-  const { project, status, flush, update, setScenes, updateScene, addScene, deleteScene } = editor;
+  const {
+    project,
+    status,
+    flush,
+    update,
+    setScenes,
+    updateScene,
+    addScene,
+    deleteScene,
+    reloadFromServer,
+  } = editor;
+
+  // A TTS job writes scene.audio on the server, so pull the result back into
+  // the draft when it lands — the draft never re-hydrates on its own.
+  const { watch: watchJob } = useJobStream(id, () => void reloadFromServer());
 
   const selectedSceneId = useUIStore((s) => s.selectedSceneId);
   const setSelectedSceneId = useUIStore((s) => s.setSelectedSceneId);
@@ -181,6 +197,7 @@ export function ProjectDetailPage() {
                     onSetScenes={setScenes}
                     onSelectScene={setSelectedSceneId}
                     onFlush={flush}
+                    onJobStarted={watchJob}
                   />
                 )}
               </TabsContent>
@@ -207,11 +224,10 @@ export function ProjectDetailPage() {
                 )}
               </TabsContent>
               <TabsContent value="audio">
-                <ComingSoon
-                  icon={Music}
-                  title="Audio"
-                  description="Pick a voice, generate voiceover, and duck background music under speech."
-                  phase={4}
+                <AudioTab
+                  project={project}
+                  onUpdate={update}
+                  onJobFinished={() => void reloadFromServer()}
                 />
               </TabsContent>
               <TabsContent value="preview">

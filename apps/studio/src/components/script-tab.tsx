@@ -1,13 +1,16 @@
 import { useState } from "react";
-import { SplitSquareVertical } from "lucide-react";
+import { Loader2, Mic, SplitSquareVertical } from "lucide-react";
+import { toast } from "sonner";
 import {
   countWords,
   createEmptyScene,
   estimateSceneDurationMs,
+  isSceneAudioStale,
   splitTextIntoScenes,
   type Project,
   type Scene,
 } from "@app/core";
+import { api, ApiError } from "@/lib/api.ts";
 import { Button } from "@/components/ui/button.tsx";
 import { Input } from "@/components/ui/input.tsx";
 import { Label } from "@/components/ui/label.tsx";
@@ -32,6 +35,7 @@ export function ScriptTab({
   onSetScenes,
   onSelectScene,
   onFlush,
+  onJobStarted,
 }: {
   project: Project;
   scene: Scene;
@@ -39,8 +43,11 @@ export function ScriptTab({
   onSetScenes: (scenes: Scene[]) => void;
   onSelectScene: (sceneId: string) => void;
   onFlush: () => void;
+  onJobStarted: (jobId: string) => void;
 }) {
   const [confirmSplit, setConfirmSplit] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const stale = isSceneAudioStale(scene, project.voice);
 
   const blocks = splitTextIntoScenes(scene.text);
   const canSplit = blocks.length > 1;
@@ -97,7 +104,27 @@ export function ScriptTab({
         />
       </div>
 
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          disabled={scene.text.trim().length === 0 || generating}
+          onClick={async () => {
+            setGenerating(true);
+            try {
+              const job = await api.generateTts(project.id, { sceneIds: [scene.id], force: true });
+              onJobStarted(job.id);
+            } catch (err) {
+              toast.error(err instanceof ApiError ? err.message : "Couldn't start voiceover");
+            } finally {
+              setGenerating(false);
+            }
+          }}
+        >
+          {generating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mic className="h-4 w-4" />}
+          {stale ? "Generate voiceover" : "Regenerate voiceover"}
+        </Button>
+
         {canSplit ? (
           <Button variant="outline" size="sm" onClick={() => setConfirmSplit(true)}>
             <SplitSquareVertical className="h-4 w-4" />

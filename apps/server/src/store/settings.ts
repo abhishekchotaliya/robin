@@ -1,6 +1,14 @@
-import { DEFAULT_SETTINGS, SettingsSchema, type Settings } from "@app/core";
+import {
+  DEFAULT_SETTINGS,
+  SettingsSchema,
+  type Settings,
+  type UpdateSettingsRequest,
+} from "@app/core";
 import { PROJECTS_ROOT, SETTINGS_FILE } from "../config.ts";
 import { pathExists, readJson, writeJsonAtomic } from "../lib/fsx.ts";
+import { KeyedMutex } from "../lib/mutex.ts";
+
+const settingsMutex = new KeyedMutex();
 
 // Internal to the server only — settings.json holds provider API keys and
 // must never be sent to the browser as-is (see toPublicSettings in core).
@@ -14,4 +22,20 @@ export async function getSettings(): Promise<Settings> {
   }
   const raw = await readJson<unknown>(SETTINGS_FILE);
   return SettingsSchema.parse(raw);
+}
+
+// Shallow merge, same rule as project PATCH. `providers` is merged one level
+// deeper so setting one provider's key can't wipe another's.
+export async function updateSettings(patch: UpdateSettingsRequest): Promise<Settings> {
+  return settingsMutex.run("settings", async () => {
+    const current = await getSettings();
+    const merged: Settings = {
+      ...current,
+      ...patch,
+      providers: { ...current.providers, ...patch.providers },
+    };
+    const validated = SettingsSchema.parse(merged);
+    await writeJsonAtomic(SETTINGS_FILE, validated);
+    return validated;
+  });
 }
