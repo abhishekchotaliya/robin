@@ -9,4 +9,5 @@ export * from "./helpers/slug.ts";
 export * from "./helpers/hash.ts";
 export * from "./helpers/duration.ts";
 export * from "./helpers/defaults.ts";
+export * from "./helpers/script.ts";
 export * from "./helpers/manifest-compile.ts";

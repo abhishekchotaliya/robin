@@ -44,6 +44,28 @@ export function sceneAudioHash(text: string, voice: Project["voice"]): string {
   return hashContent(text, voice.providerId, voice.voiceId, String(voice.speed), String(voice.stability));
 }
 
+export const DEFAULT_SCENE_COLOR = "#18181b";
+
+// Used by createEmptyProject, the "add scene" button, and split-into-scenes.
+// One definition of what a new scene is, shared by client and server.
+export function createEmptyScene(order: number, text = ""): Scene {
+  return {
+    id: crypto.randomUUID(),
+    order,
+    text,
+    overlayText: null,
+    media: {
+      kind: "color",
+      assetId: null,
+      fit: "cover",
+      color: DEFAULT_SCENE_COLOR,
+      kenBurns: DEFAULT_KEN_BURNS,
+    },
+    audio: null,
+    transitionOut: { type: "none", durationMs: 0 },
+  };
+}
+
 export function createEmptyProject(input: {
   title: string;
   slug: string;
@@ -52,21 +74,6 @@ export function createEmptyProject(input: {
   defaults: Settings;
 }): Project {
   const now = new Date().toISOString();
-  const firstScene: Scene = {
-    id: crypto.randomUUID(),
-    order: 0,
-    text: "",
-    overlayText: null,
-    media: {
-      kind: "color",
-      assetId: null,
-      fit: "cover",
-      color: "#18181b",
-      kenBurns: DEFAULT_KEN_BURNS,
-    },
-    audio: null,
-    transitionOut: { type: "none", durationMs: 0 },
-  };
 
   return {
     id: crypto.randomUUID(),
@@ -90,7 +97,7 @@ export function createEmptyProject(input: {
       style: "bold-center",
       maxWordsPerLine: 4,
     },
-    scenes: [firstScene],
+    scenes: [createEmptyScene(0)],
     lastRender: null,
   };
 }
