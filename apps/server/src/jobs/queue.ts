@@ -17,6 +17,13 @@ export interface JobContext {
   log(line: string): void;
   /** Throws if the job was cancelled, so a runner can bail between units of work. */
   throwIfCancelled(): void;
+  /**
+   * Registers an abort callback for work that can't be interrupted by a
+   * checkpoint. Rendering runs for minutes inside a single call, so without
+   * this a cancel would only take effect once it finished — the button would
+   * look like it worked while Chromium kept burning CPU.
+   */
+  onCancel(abort: () => void): void;
 }
 
 export class JobCancelledError extends Error {
@@ -31,6 +38,7 @@ type Subscriber = (job: RenderJob) => void;
 const jobs = new Map<string, RenderJob>();
 const subscribers = new Map<string, Set<Subscriber>>();
 const cancelled = new Set<string>();
+const abortHandlers = new Map<string, Set<() => void>>();
 
 let queue: Promise<unknown> = Promise.resolve();
 
@@ -66,6 +74,14 @@ export function cancelJob(id: string): void {
   const job = getJob(id);
   if (job.state === "done" || job.state === "error" || job.state === "cancelled") return;
   cancelled.add(id);
+  // Interrupt anything long-running that registered an aborter.
+  for (const abort of abortHandlers.get(id) ?? []) {
+    try {
+      abort();
+    } catch (err) {
+      console.error(`[jobs] abort handler for ${id} threw:`, err);
+    }
+  }
   // A queued job never starts; a running one stops at its next checkpoint.
   if (job.state === "queued") {
     update(id, { state: "cancelled", finishedAt: new Date().toISOString() });
@@ -101,6 +117,13 @@ export function enqueueJob(
     throwIfCancelled: () => {
       if (cancelled.has(id)) throw new JobCancelledError();
     },
+    onCancel: (abort) => {
+      const set = abortHandlers.get(id) ?? new Set<() => void>();
+      set.add(abort);
+      abortHandlers.set(id, set);
+      // Registering after a cancel already landed must still abort.
+      if (cancelled.has(id)) abort();
+    },
   };
 
   // Chain onto the queue so only one job runs at a time. `.catch` on the
@@ -118,7 +141,10 @@ export function enqueueJob(
         finishedAt: new Date().toISOString(),
       });
     } catch (err) {
-      if (err instanceof JobCancelledError) {
+      // Aborted work throws whatever the underlying library raises (Remotion
+      // has its own cancellation error), so a cancel that was actually
+      // requested is reported as cancelled rather than as a failure.
+      if (err instanceof JobCancelledError || cancelled.has(id)) {
         update(id, { state: "cancelled", finishedAt: new Date().toISOString() });
       } else {
         console.error(`[jobs] job ${id} failed:`, err);
@@ -130,6 +156,7 @@ export function enqueueJob(
       }
     } finally {
       cancelled.delete(id);
+      abortHandlers.delete(id);
     }
   });
 

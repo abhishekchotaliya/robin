@@ -9,6 +9,7 @@ import {
   ProjectListItemSchema,
   ProjectSchema,
   RenderJobSchema,
+  RenderRequestSchema,
   RenderManifestSchema,
   SettingsPublicSchema,
   TtsRequestSchema,
@@ -20,6 +21,7 @@ import {
   type MixRequest,
   type Project,
   type RenderJob,
+  type RenderRequest,
   type TtsRequest,
   type UpdateProjectRequest,
   type UpdateSettingsRequest,
@@ -136,6 +138,29 @@ export const api = {
       method: "POST",
       body: JSON.stringify(MixRequestSchema.parse(body)),
     }),
+
+  startRender: (projectId: string, body: RenderRequest) =>
+    request(`/projects/${projectId}/render`, RenderJobSchema, {
+      method: "POST",
+      body: JSON.stringify(RenderRequestSchema.parse(body)),
+    }),
+
+  listRenders: (projectId: string) =>
+    request(
+      `/projects/${projectId}/renders`,
+      z.object({
+        upToDate: z.boolean(),
+        renders: z.array(
+          z.object({
+            filename: z.string(),
+            path: z.string(),
+            bytes: z.number(),
+            createdAt: z.string(),
+            isLatest: z.boolean(),
+          }),
+        ),
+      }),
+    ),
 
   getJob: (jobId: string) => request(`/jobs/${jobId}`, RenderJobSchema),
 

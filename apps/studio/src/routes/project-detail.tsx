@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Film } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { estimateSceneDurationMs } from "@app/core";
 import { Button } from "@/components/ui/button.tsx";
 import { Input } from "@/components/ui/input.tsx";
@@ -18,9 +18,9 @@ import { ScriptTab } from "@/components/script-tab.tsx";
 import { MediaTab } from "@/components/media-tab.tsx";
 import { AudioTab } from "@/components/audio-tab.tsx";
 import { PreviewTab } from "@/components/preview-tab.tsx";
+import { RenderTab } from "@/components/render-tab.tsx";
 import { useAssets } from "@/hooks/useAssets.ts";
 import { useJobStream } from "@/hooks/useJob.ts";
-import { ComingSoon } from "@/components/coming-soon.tsx";
 import { useProjectEditor } from "@/hooks/useProjectEditor.ts";
 import { useUIStore } from "@/stores/ui.ts";
 import { formatDuration } from "@/lib/format.ts";
@@ -235,12 +235,7 @@ export function ProjectDetailPage() {
                 <PreviewTab project={project} />
               </TabsContent>
               <TabsContent value="render">
-                <ComingSoon
-                  icon={Film}
-                  title="Render"
-                  description="One button, live progress, and an mp4 on disk when it finishes."
-                  phase={8}
-                />
+                <RenderTab project={project} onJobFinished={() => void reloadFromServer()} />
               </TabsContent>
             </div>
           </Tabs>

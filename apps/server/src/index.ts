@@ -1,6 +1,6 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
-import { ensureProjectsRoot } from "./config.ts";
+import { PORT, ensureProjectsRoot } from "./config.ts";
 import { ApiHttpError } from "./lib/errors.ts";
 import { assetsRoutes } from "./routes/assets.ts";
 import { captionsRoutes } from "./routes/captions.ts";
@@ -10,6 +10,7 @@ import { jobsRoutes } from "./routes/jobs.ts";
 import { manifestRoutes } from "./routes/manifest.ts";
 import { mixRoutes } from "./routes/mix.ts";
 import { projectsRoutes } from "./routes/projects.ts";
+import { renderRoutes } from "./routes/render.ts";
 import { settingsRoutes } from "./routes/settings.ts";
 import { ttsRoutes } from "./routes/tts.ts";
 
@@ -37,10 +38,11 @@ app.route("/api/projects", ttsRoutes);
 app.route("/api/projects", captionsRoutes);
 app.route("/api/projects", mixRoutes);
 app.route("/api/projects", manifestRoutes);
+app.route("/api/projects", renderRoutes);
 app.route("/api/projects", projectsRoutes);
 app.route("/files", filesRoutes);
 
-const port = 8787;
+const port = PORT;
 console.log(`server listening on :${port}`);
 
 export default {

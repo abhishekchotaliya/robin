@@ -115,7 +115,20 @@ export async function createProject(input: CreateProjectRequest): Promise<Projec
   return project;
 }
 
-export async function updateProject(id: string, patch: UpdateProjectRequest): Promise<Project> {
+/**
+ * `currentManifestHash` is what lets deriveStatus reach "rendered" — it can
+ * only claim the video is current if it knows what the current manifest
+ * hashes to, and compiling one on every autosave write would mean reading
+ * assets and captions from disk on each keystroke. Only the renderer knows
+ * it (and has just computed it), so only the renderer passes it. Any later
+ * edit recomputes without it and drops back to "ready", which is the honest
+ * answer: an edit may well have invalidated the render.
+ */
+export async function updateProject(
+  id: string,
+  patch: UpdateProjectRequest,
+  opts: { currentManifestHash?: string } = {},
+): Promise<Project> {
   return projectMutex.run(id, async () => {
     const slug = await findProjectSlugById(id);
     if (!slug) throw new NotFoundError(`project ${id} not found`);
@@ -133,7 +146,7 @@ export async function updateProject(id: string, patch: UpdateProjectRequest): Pr
       createdAt: current.createdAt,
       updatedAt: new Date().toISOString(),
     };
-    merged.status = deriveStatus(merged);
+    merged.status = deriveStatus(merged, opts.currentManifestHash);
 
     const validated = ProjectSchema.parse(merged);
     await writeJsonAtomic(join(projectDir(slug), PROJECT_FILE), validated);

@@ -35,6 +35,13 @@ export const MixRequestSchema = z.object({
 });
 export type MixRequest = z.infer<typeof MixRequestSchema>;
 
+// POST /api/projects/:id/render
+export const RenderRequestSchema = z.object({
+  /** Redo every step even when caches are valid. */
+  force: z.boolean().optional(),
+});
+export type RenderRequest = z.infer<typeof RenderRequestSchema>;
+
 // PATCH /api/settings. API keys are write-only: they can be set here but the
 // GET response only ever reports whether one is configured.
 export const UpdateSettingsRequestSchema = z.object({

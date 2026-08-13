@@ -135,6 +135,18 @@ One FFmpeg filter graph produces `audio/master.wav`: concatenated voiceover (300
 - Exactly one `<Audio>` (the mixed master). Never mount the individual voiceover clips.
 - `GET /api/projects/:id/manifest` serves the `pathMode: "http"` manifest for the Player; the renderer (phase 8) compiles with `"fs"` instead.
 
+## Render pipeline (`services/pipeline.ts`, `services/renderer.ts`)
+
+`POST /api/projects/:id/render` enqueues one job that runs validate → tts → captions → mix → render, each step reusing its own content-hash cache, so a re-render after a small edit only redoes what that edit affected. `scoped()` maps each sub-step's 0–1 progress into a slice of the overall bar.
+
+- **`force` applies to the render step only, never upstream.** Cascading it would re-synthesize every scene through a paid API when the audio is provably current — not what someone pressing "render again" is asking for. Regenerating voiceover/captions is an explicit action in the Audio tab.
+- **No API-key pre-check in the pipeline.** A scene can look stale in `project.json` while its audio is already cached on disk; only the TTS service knows that, and it raises its own actionable error if it genuinely must call the API.
+- **The renderer compiles with `pathMode: "http"` plus an absolute `baseUrl`**, not `fs`. Remotion serves the bundle from its own random localhost port, so relative `/files/...` would resolve against that port, and `file://` subresources are blocked from an `http://` page. Absolute paths into the API server are the thing that works.
+- **Cancel needs `makeCancelSignal()`, not just checkpoints.** `renderMedia` runs for minutes in a single call; `ctx.onCancel(abort)` hands the job a way to interrupt it, otherwise the button appears to work while Chromium keeps going. Anything that aborts throws the library's own error, so the queue treats *any* error on a cancelled job as a cancellation.
+- Bundling is cached in `.cache/bundle` and invalidated by the newest mtime under `packages/video/src`.
+- `manifestHash(manifest)` is the render's identity: matching `lastRender.manifestHash` short-circuits, and it's the only way `deriveStatus` can reach `rendered`. `updateProject` takes it as an option because compiling a manifest on every autosave write would mean reading assets and captions on each keystroke — only the renderer passes it, and any later edit honestly drops back to `ready`.
+- **`pathExists` is files-only** (`Bun.file(dir).exists()` is false for directories) — use `dirExists` for folders.
+
 ## Providers (`apps/server/src/providers/`)
 
 All four capability interfaces live in `types.ts` (TTS implemented; Image/Video/Stock defined but unimplemented). Each carries `isConfigured(settings)` so the UI can ask whether a key is present without ever seeing it. Registered by `providerId` in `registry.ts` — adding a provider is a new file plus one registry line, never a change to `services/`.

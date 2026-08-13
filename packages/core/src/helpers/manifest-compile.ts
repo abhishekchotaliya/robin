@@ -1,11 +1,21 @@
 import type { Asset } from "../schemas/asset.ts";
 import type { ManifestCaptionLine, ManifestScene, ManifestWord, RenderManifest } from "../schemas/manifest.ts";
 import type { Project } from "../schemas/project.ts";
+import { hashContent } from "./hash.ts";
 import { computeSceneTimeline, type Timeline } from "./timeline.ts";
 
 export interface CompileManifestOptions {
-  /** "http" for the browser Player (needs /files/* URLs); "fs" for renderMedia (needs absolute paths). */
+  /** "http" serves media over /files/*; "fs" emits absolute filesystem paths. */
   pathMode: "http" | "fs";
+  /**
+   * Origin to prefix onto "http" paths, e.g. "http://localhost:8787".
+   *
+   * The browser Player omits it and uses same-origin relative URLs. The
+   * renderer MUST set it: Remotion serves the bundle from its own random
+   * localhost port, so a bare "/files/..." would resolve against that port
+   * instead of the API server and 404.
+   */
+  baseUrl?: string;
   /** Absolute path to this project's directory on disk. Only used in "fs" mode. */
   projectDir: string;
   assets: Asset[];
@@ -29,14 +39,14 @@ function resolveMediaSrc(
   const asset = assetsById.get(assetId);
   if (!asset) return null; // referenced asset was deleted; caller falls back to scene.media.color
   return opts.pathMode === "http"
-    ? `/files/${project.slug}/assets/${asset.filename}`
+    ? `${opts.baseUrl ?? ""}/files/${project.slug}/assets/${asset.filename}`
     : `${opts.projectDir}/assets/${asset.filename}`;
 }
 
 function resolveAudioSrc(project: Project, opts: CompileManifestOptions): string | null {
   if (!opts.masterAudioExists) return null;
   return opts.pathMode === "http"
-    ? `/files/${project.slug}/audio/master.wav`
+    ? `${opts.baseUrl ?? ""}/files/${project.slug}/audio/master.wav`
     : `${opts.projectDir}/audio/master.wav`;
 }
 
@@ -86,6 +96,54 @@ function splitByScene(words: ManifestWord[], timeline: Timeline): ManifestWord[]
   }
 
   return timeline.entries.map((entry) => groups.get(entry.sceneId) ?? []).filter((g) => g.length > 0);
+}
+
+/**
+ * Identity of a rendered result: if this hash matches `lastRender`, the mp4
+ * on disk already shows exactly this manifest and re-rendering would burn
+ * minutes to produce an identical file.
+ *
+ * Media is hashed by its path only, not its bytes — assets are immutable
+ * once uploaded (uuid-prefixed filenames) and pipeline outputs are already
+ * content-hash named, so the path changing is what signals new content.
+ * baseUrl is deliberately excluded: rendering the same project from a
+ * different port must not invalidate the result.
+ */
+export function manifestHash(manifest: RenderManifest): string {
+  const parts: string[] = [
+    String(manifest.width),
+    String(manifest.height),
+    String(manifest.fps),
+    String(manifest.durationInFrames),
+    stripOrigin(manifest.audioSrc),
+    String(manifest.captions.enabled),
+    manifest.captions.style,
+  ];
+
+  for (const scene of manifest.scenes) {
+    parts.push(
+      scene.id,
+      String(scene.from),
+      String(scene.durationInFrames),
+      scene.media.kind,
+      stripOrigin(scene.media.src),
+      scene.media.fit,
+      scene.media.color,
+      JSON.stringify(scene.media.kenBurns),
+      scene.overlayText ?? "",
+    );
+  }
+
+  for (const line of manifest.captions.lines) {
+    parts.push(`${line.startMs}-${line.endMs}:${line.words.map((w) => w.text).join(" ")}`);
+  }
+
+  return hashContent(...parts);
+}
+
+function stripOrigin(src: string | null): string {
+  if (!src) return "";
+  return src.replace(/^https?:\/\/[^/]+/, "");
 }
 
 export function compileManifest(project: Project, opts: CompileManifestOptions): RenderManifest {
