@@ -1,0 +1,70 @@
+import {
+  ApiErrorSchema,
+  CreateProjectRequestSchema,
+  HealthSchema,
+  ProjectListItemSchema,
+  ProjectSchema,
+  UpdateProjectRequestSchema,
+  type CreateProjectRequest,
+  type Project,
+  type UpdateProjectRequest,
+} from "@app/core";
+import { z } from "zod";
+
+// The ONLY module in the app that knows fetch/HTTP. Every response is
+// parsed with the shared core schema, so a drifting server fails loudly
+// here in dev instead of producing a confusing UI bug three components away.
+export class ApiError extends Error {
+  constructor(
+    public readonly code: string,
+    message: string,
+    public readonly status: number,
+    public readonly issues?: unknown[],
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+async function request<T>(path: string, schema: z.ZodType<T>, init?: RequestInit): Promise<T> {
+  const res = await fetch(`/api${path}`, {
+    ...init,
+    headers: { "Content-Type": "application/json", ...init?.headers },
+  });
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    const parsed = ApiErrorSchema.safeParse(body);
+    if (parsed.success) {
+      throw new ApiError(parsed.data.error.code, parsed.data.error.message, res.status, parsed.data.error.issues);
+    }
+    throw new ApiError("INTERNAL", `request failed with status ${res.status}`, res.status);
+  }
+
+  if (res.status === 204) return undefined as T;
+  return schema.parse(await res.json());
+}
+
+export const api = {
+  health: () => request("/health", HealthSchema),
+
+  listProjects: () => request("/projects", z.array(ProjectListItemSchema)),
+
+  getProject: (id: string) => request(`/projects/${id}`, ProjectSchema),
+
+  createProject: (body: CreateProjectRequest) =>
+    request("/projects", ProjectSchema, {
+      method: "POST",
+      body: JSON.stringify(CreateProjectRequestSchema.parse(body)),
+    }),
+
+  updateProject: (id: string, patch: UpdateProjectRequest) =>
+    request(`/projects/${id}`, ProjectSchema, {
+      method: "PATCH",
+      body: JSON.stringify(UpdateProjectRequestSchema.parse(patch)),
+    }),
+
+  deleteProject: (id: string) => request<void>(`/projects/${id}`, z.void(), { method: "DELETE" }),
+};
+
+export type { Project };

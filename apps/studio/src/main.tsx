@@ -5,16 +5,15 @@ import { createBrowserRouter, RouterProvider } from "react-router-dom";
 import { ThemeProvider } from "@/components/theme-provider.tsx";
 import { TooltipProvider } from "@/components/ui/tooltip.tsx";
 import { Toaster } from "@/components/ui/sonner.tsx";
-import { HealthCheckPage } from "@/routes/health-check.tsx";
+import { ProjectsListPage } from "@/routes/projects-list.tsx";
+import { ProjectDetailPage } from "@/routes/project-detail.tsx";
 import "./index.css";
 
 const queryClient = new QueryClient();
 
 const router = createBrowserRouter([
-  {
-    path: "/",
-    element: <HealthCheckPage />,
-  },
+  { path: "/", element: <ProjectsListPage /> },
+  { path: "/projects/:id", element: <ProjectDetailPage /> },
 ]);
 
 createRoot(document.getElementById("root")!).render(
