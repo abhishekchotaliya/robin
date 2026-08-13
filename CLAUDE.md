@@ -107,7 +107,15 @@ Seven-step server-side job, every step content-hash-cached:
 | 6 | mix | `ffmpeg-static` | `hashContent(vo hashes…, bgm settings)` |
 | 7 | render | `@remotion/renderer` `renderMedia` | manifest hash |
 
-The mix step (6, not built) is one FFmpeg filter graph — concat with 300ms gaps → loop/trim BGM → `sidechaincompress` to duck under speech → `amix` → `loudnorm` to **-14 LUFS** (YouTube's target) → single `master.wav`. Remotion should only ever see that one audio file, never the individual VO clips. It must lay scenes out using `computeSceneTimeline` (below) or captions drift against picture.
+## Audio mix (`services/mix.ts`)
+
+One FFmpeg filter graph produces `audio/master.wav`: concatenated voiceover (300ms gaps, `computeSceneTimeline`) + music looped with `-stream_loop -1` and trimmed to the voiceover's length → `sidechaincompress` → `amix` → `loudnorm`. **Remotion only ever receives this one file**, never the individual clips — that keeps the render deterministic and means an audio problem can be debugged by playing a wav instead of re-rendering a video.
+
+- The voiceover is `asplit` into two branches: one is the sidechain *key* that triggers ducking, the other is the layer actually heard. Order matters — `[music][voice]sidechaincompress` ducks the music; reversed, it ducks the voice.
+- `duckingDb` is a dB figure in the UI but a compressor wants a *ratio*, so `duckingRatio()` converts. Measured: about 10 dB of reduction under speech with full recovery in the gaps.
+- `loudnorm=I=-14:TP=-1.5` targets YouTube's normalization point so the platform leaves the audio alone. Verify a master with `ffmpeg -i master.wav -af loudnorm=print_format=json -f null -` and read **`input_i`** (the measurement of that file) — `output_i` describes what a further pass would do and is not the answer.
+- Concat format is parameterised (`WHISPER_FORMAT` 16kHz mono vs `MASTER_FORMAT` 48kHz stereo) because whisper's requirement would otherwise degrade the shipped audio.
+- Cached on `mixHash` (voiceover hashes + every bgm setting), stamped in `.cache/master.hash`. `GET /api/projects/:id/mix` reports `exists`/`upToDate` so the UI can label its button honestly.
 
 ## Timeline and captions
 

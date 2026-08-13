@@ -52,8 +52,27 @@ export function sceneDurationMs(scene: Scene): number {
  * would differ — i.e. when any scene's audio, or the scene order, changes.
  */
 export function captionsHash(project: Project): string {
-  const parts = [...project.scenes]
-    .sort((a, b) => a.order - b.order)
-    .map((scene) => scene.audio?.hash ?? "none");
-  return hashContent(...parts, String(SCENE_GAP_MS));
+  return hashContent(...voHashes(project), String(SCENE_GAP_MS));
+}
+
+/**
+ * Cache key for the mixed master audio: the voiceover it's built from plus
+ * every setting that changes how the music sits under it. Changing a gain
+ * slider must invalidate this; changing a scene's colour must not.
+ */
+export function mixHash(project: Project): string {
+  const { bgm } = project;
+  return hashContent(
+    ...voHashes(project),
+    String(SCENE_GAP_MS),
+    bgm.assetId ?? "no-bgm",
+    String(bgm.gainDb),
+    String(bgm.duckingDb),
+    String(bgm.fadeInMs),
+    String(bgm.fadeOutMs),
+  );
+}
+
+function voHashes(project: Project): string[] {
+  return [...project.scenes].sort((a, b) => a.order - b.order).map((scene) => scene.audio?.hash ?? "none");
 }

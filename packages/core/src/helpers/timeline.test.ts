@@ -2,7 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { DEFAULT_SETTINGS, type Settings } from "../schemas/settings.ts";
 import { createEmptyProject, createEmptyScene } from "./defaults.ts";
 import { compileManifest } from "./manifest-compile.ts";
-import { SCENE_GAP_MS, captionsHash, computeSceneTimeline } from "./timeline.ts";
+import { SCENE_GAP_MS, captionsHash, computeSceneTimeline, mixHash } from "./timeline.ts";
 
 const settings: Settings = { projectsRoot: "/tmp/videostudio", ...DEFAULT_SETTINGS };
 
@@ -97,5 +97,39 @@ describe("captionsHash", () => {
       { ...after.scenes[1]!, order: 0 },
     ];
     expect(captionsHash(before)).not.toBe(captionsHash(after));
+  });
+});
+
+describe("mixHash", () => {
+  test("is stable when nothing relevant changed", () => {
+    expect(mixHash(projectWithScenes([1000, 2000]))).toBe(mixHash(projectWithScenes([1000, 2000])));
+  });
+
+  test.each([
+    ["gain", { gainDb: -6 }],
+    ["ducking", { duckingDb: -20 }],
+    ["fade in", { fadeInMs: 1200 }],
+    ["fade out", { fadeOutMs: 1200 }],
+    ["bgm track", { assetId: "some-asset" }],
+  ])("changes when %s changes", (_label, patch) => {
+    const before = projectWithScenes([1000, 2000]);
+    const after = projectWithScenes([1000, 2000]);
+    after.bgm = { ...after.bgm, ...patch };
+    expect(mixHash(before)).not.toBe(mixHash(after));
+  });
+
+  test("changes when the voiceover changes", () => {
+    const before = projectWithScenes([1000, 2000]);
+    const after = projectWithScenes([1000, 2000]);
+    after.scenes[0]!.audio = { ...after.scenes[0]!.audio!, hash: "regenerated" };
+    expect(mixHash(before)).not.toBe(mixHash(after));
+  });
+
+  test("ignores changes that don't affect audio", () => {
+    const before = projectWithScenes([1000, 2000]);
+    const after = projectWithScenes([1000, 2000]);
+    after.scenes[0]!.media = { ...after.scenes[0]!.media, color: "#ff0000" };
+    after.title = "Renamed";
+    expect(mixHash(before)).toBe(mixHash(after));
   });
 });

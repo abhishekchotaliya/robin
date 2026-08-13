@@ -4,6 +4,7 @@ import {
   CaptionsFileSchema,
   CaptionsRequestSchema,
   CreateProjectRequestSchema,
+  MixRequestSchema,
   HealthSchema,
   ProjectListItemSchema,
   ProjectSchema,
@@ -15,6 +16,7 @@ import {
   VoiceOptionSchema,
   type CaptionsRequest,
   type CreateProjectRequest,
+  type MixRequest,
   type Project,
   type RenderJob,
   type TtsRequest,
@@ -118,6 +120,18 @@ export const api = {
     request(`/projects/${projectId}/captions`, RenderJobSchema, {
       method: "POST",
       body: JSON.stringify(CaptionsRequestSchema.parse(body)),
+    }),
+
+  getMixStatus: (projectId: string) =>
+    request(
+      `/projects/${projectId}/mix`,
+      z.object({ exists: z.boolean(), upToDate: z.boolean(), file: z.string().nullable() }),
+    ),
+
+  buildMix: (projectId: string, body: MixRequest) =>
+    request(`/projects/${projectId}/mix`, RenderJobSchema, {
+      method: "POST",
+      body: JSON.stringify(MixRequestSchema.parse(body)),
     }),
 
   getJob: (jobId: string) => request(`/jobs/${jobId}`, RenderJobSchema),

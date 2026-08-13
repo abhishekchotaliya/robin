@@ -19,7 +19,7 @@ import { NotFoundError } from "../lib/errors.ts";
 import { pathExists, readJson, writeJsonAtomic } from "../lib/fsx.ts";
 import type { JobContext } from "../jobs/queue.ts";
 import { getProject, projectDir } from "../store/projects.ts";
-import { buildConcatenatedVo } from "./audio-concat.ts";
+import { WHISPER_FORMAT, buildConcatenatedVo } from "./audio-concat.ts";
 
 // Pinned so an upgrade is a deliberate change: whisper.cpp's CLI flags and
 // JSON output have shifted between releases.
@@ -94,7 +94,7 @@ export async function generateCaptions(
 
   ctx.setProgress(0.3);
   ctx.log("Building concatenated voiceover (16kHz mono)…");
-  const { path: audioPath } = await buildConcatenatedVo(project);
+  const { path: audioPath } = await buildConcatenatedVo(project, WHISPER_FORMAT);
   ctx.throwIfCancelled();
 
   ctx.setProgress(0.4);

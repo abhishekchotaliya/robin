@@ -6,11 +6,28 @@ import { pathExists } from "../lib/fsx.ts";
 import { projectDir } from "../store/projects.ts";
 import { runFfmpeg } from "./ffmpeg.ts";
 
+export interface ConcatFormat {
+  sampleRate: number;
+  channels: number;
+  /** Output filename inside .cache/, so the two formats can coexist. */
+  outputName: string;
+}
+
 // whisper.cpp accepts 16-bit 16kHz mono WAV and NOTHING else — hand it an
 // mp3 or a 44.1kHz file and it produces silently garbage timestamps rather
-// than an error. These constants are the format contract.
-const SAMPLE_RATE = 16_000;
-const CHANNELS = 1;
+// than an error.
+export const WHISPER_FORMAT: ConcatFormat = {
+  sampleRate: 16_000,
+  channels: 1,
+  outputName: "vo-concat-16k.wav",
+};
+
+// Full quality for the audio that actually ships in the video.
+export const MASTER_FORMAT: ConcatFormat = {
+  sampleRate: 48_000,
+  channels: 2,
+  outputName: "vo-concat-48k.wav",
+};
 
 /**
  * Builds one WAV of the whole voiceover: every scene's VO in order, with
@@ -21,10 +38,13 @@ const CHANNELS = 1;
  * Written to `.cache/` rather than `audio/` because it's a derived
  * intermediate, not something the user should see or the renderer consumes.
  */
-export async function buildConcatenatedVo(project: Project): Promise<{ path: string; durationMs: number }> {
+export async function buildConcatenatedVo(
+  project: Project,
+  format: ConcatFormat,
+): Promise<{ path: string; durationMs: number }> {
   const dir = projectDir(project.slug);
-  const workDir = join(dir, ".cache", "vo-concat");
-  const outputPath = join(dir, ".cache", "vo-concat.wav");
+  const workDir = join(dir, ".cache", `vo-concat-${format.sampleRate}`);
+  const outputPath = join(dir, ".cache", format.outputName);
 
   const timeline = computeSceneTimeline(project);
   const ordered = [...project.scenes].sort((a, b) => a.order - b.order).filter((s) => s.audio !== null);
@@ -50,7 +70,7 @@ export async function buildConcatenatedVo(project: Project): Promise<{ path: str
     }
     const normalized = join(workDir, `scene-${String(index).padStart(3, "0")}.wav`);
     await runFfmpeg(
-      ["-i", source, "-ar", String(SAMPLE_RATE), "-ac", String(CHANNELS), "-c:a", "pcm_s16le", normalized],
+      ["-i", source, "-ar", String(format.sampleRate), "-ac", String(format.channels), "-c:a", "pcm_s16le", normalized],
       `normalizing scene ${scene.order + 1}`,
     );
     parts.push(normalized);
@@ -62,7 +82,7 @@ export async function buildConcatenatedVo(project: Project): Promise<{ path: str
       "-f",
       "lavfi",
       "-i",
-      `anullsrc=r=${SAMPLE_RATE}:cl=mono`,
+      `anullsrc=r=${format.sampleRate}:cl=${format.channels === 1 ? "mono" : "stereo"}`,
       "-t",
       String(SCENE_GAP_MS / 1000),
       "-c:a",

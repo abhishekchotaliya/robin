@@ -28,6 +28,13 @@ export const CaptionsRequestSchema = z.object({
 });
 export type CaptionsRequest = z.infer<typeof CaptionsRequestSchema>;
 
+// POST /api/projects/:id/mix
+export const MixRequestSchema = z.object({
+  /** Rebuild the master even when the cached hash matches. */
+  force: z.boolean().optional(),
+});
+export type MixRequest = z.infer<typeof MixRequestSchema>;
+
 // PATCH /api/settings. API keys are write-only: they can be set here but the
 // GET response only ever reports whether one is configured.
 export const UpdateSettingsRequestSchema = z.object({
