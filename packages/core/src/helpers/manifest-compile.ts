@@ -1,7 +1,7 @@
 import type { Asset } from "../schemas/asset.ts";
 import type { ManifestCaptionLine, ManifestScene, ManifestWord, RenderManifest } from "../schemas/manifest.ts";
 import type { Project } from "../schemas/project.ts";
-import { computeSceneTimeline } from "./timeline.ts";
+import { computeSceneTimeline, type Timeline } from "./timeline.ts";
 
 export interface CompileManifestOptions {
   /** "http" for the browser Player (needs /files/* URLs); "fs" for renderMedia (needs absolute paths). */
@@ -42,17 +42,50 @@ function resolveAudioSrc(project: Project, opts: CompileManifestOptions): string
 
 // Groups words into caption lines up front so the Remotion component never
 // has to do this per-frame (that's a real performance trap at 30fps).
-function groupWordsIntoLines(words: ManifestWord[], maxWordsPerLine: number): ManifestCaptionLine[] {
+export function groupWordsIntoLines(
+  words: ManifestWord[],
+  maxWordsPerLine: number,
+  timeline: Timeline,
+): ManifestCaptionLine[] {
   const perLine = Math.max(1, maxWordsPerLine);
   const lines: ManifestCaptionLine[] = [];
-  for (let i = 0; i < words.length; i += perLine) {
-    const chunk = words.slice(i, i + perLine);
-    const first = chunk[0];
-    const last = chunk[chunk.length - 1];
-    if (!first || !last) continue;
-    lines.push({ words: chunk, startMs: first.startMs, endMs: last.endMs });
+
+  // Lines must not straddle a scene cut: a line that did would hold the
+  // previous scene's words on screen over the next scene's picture.
+  for (const group of splitByScene(words, timeline)) {
+    for (let i = 0; i < group.length; i += perLine) {
+      const chunk = group.slice(i, i + perLine);
+      const first = chunk[0];
+      const last = chunk[chunk.length - 1];
+      if (!first || !last) continue;
+      lines.push({ words: chunk, startMs: first.startMs, endMs: last.endMs });
+    }
   }
+
   return lines;
+}
+
+/**
+ * Buckets words by the scene playing when each one starts. Words landing in
+ * the silence between scenes belong to the scene that just ended — that's
+ * where the speech they trail from came from.
+ */
+function splitByScene(words: ManifestWord[], timeline: Timeline): ManifestWord[][] {
+  if (timeline.entries.length === 0) return words.length > 0 ? [words] : [];
+
+  const groups = new Map<string, ManifestWord[]>();
+  for (const word of words) {
+    let owner = timeline.entries[0]!;
+    for (const entry of timeline.entries) {
+      if (word.startMs >= entry.startMs) owner = entry;
+      else break;
+    }
+    const bucket = groups.get(owner.sceneId) ?? [];
+    bucket.push(word);
+    groups.set(owner.sceneId, bucket);
+  }
+
+  return timeline.entries.map((entry) => groups.get(entry.sceneId) ?? []).filter((g) => g.length > 0);
 }
 
 export function compileManifest(project: Project, opts: CompileManifestOptions): RenderManifest {
@@ -97,7 +130,7 @@ export function compileManifest(project: Project, opts: CompileManifestOptions):
     captions: {
       enabled: project.captions.enabled,
       style: project.captions.style,
-      lines: opts.words ? groupWordsIntoLines(opts.words, project.captions.maxWordsPerLine) : [],
+      lines: opts.words ? groupWordsIntoLines(opts.words, project.captions.maxWordsPerLine, timeline) : [],
     },
   };
 }

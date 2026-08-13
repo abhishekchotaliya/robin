@@ -9,6 +9,7 @@ import {
   ProjectListItemSchema,
   ProjectSchema,
   RenderJobSchema,
+  RenderManifestSchema,
   SettingsPublicSchema,
   TtsRequestSchema,
   UpdateProjectRequestSchema,
@@ -121,6 +122,8 @@ export const api = {
       method: "POST",
       body: JSON.stringify(CaptionsRequestSchema.parse(body)),
     }),
+
+  getManifest: (projectId: string) => request(`/projects/${projectId}/manifest`, RenderManifestSchema),
 
   getMixStatus: (projectId: string) =>
     request(

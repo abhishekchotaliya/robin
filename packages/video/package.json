@@ -1,0 +1,24 @@
+{
+  "name": "@app/video",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "exports": {
+    ".": "./src/exports.ts"
+  },
+  "scripts": {
+    "studio": "remotionb studio src/index.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@app/core": "workspace:*",
+    "remotion": "4.0.509",
+    "react": "19.2.8",
+    "react-dom": "19.2.8"
+  },
+  "devDependencies": {
+    "@remotion/cli": "4.0.509",
+    "typescript": "^5.9.2",
+    "@types/react": "^19.0.0"
+  }
+}

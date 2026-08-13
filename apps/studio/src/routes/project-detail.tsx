@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Film, Music, Play } from "lucide-react";
+import { ArrowLeft, Film } from "lucide-react";
 import { estimateSceneDurationMs } from "@app/core";
 import { Button } from "@/components/ui/button.tsx";
 import { Input } from "@/components/ui/input.tsx";
@@ -17,6 +17,7 @@ import { SceneRail } from "@/components/scene-rail.tsx";
 import { ScriptTab } from "@/components/script-tab.tsx";
 import { MediaTab } from "@/components/media-tab.tsx";
 import { AudioTab } from "@/components/audio-tab.tsx";
+import { PreviewTab } from "@/components/preview-tab.tsx";
 import { useAssets } from "@/hooks/useAssets.ts";
 import { useJobStream } from "@/hooks/useJob.ts";
 import { ComingSoon } from "@/components/coming-soon.tsx";
@@ -231,12 +232,7 @@ export function ProjectDetailPage() {
                 />
               </TabsContent>
               <TabsContent value="preview">
-                <ComingSoon
-                  icon={Play}
-                  title="Preview"
-                  description="Scrub the composition in the browser before rendering."
-                  phase={7}
-                />
+                <PreviewTab project={project} />
               </TabsContent>
               <TabsContent value="render">
                 <ComingSoon

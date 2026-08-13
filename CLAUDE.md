@@ -125,6 +125,16 @@ One FFmpeg filter graph produces `audio/master.wav`: concatenated voiceover (300
 - Whisper emits punctuation as separate tokens and gives short tokens zero-length spans (`start === end`), which can never highlight during playback. `normalizeWords` in core merges punctuation onto the preceding word and guarantees every word occupies real time without overrunning the next.
 - Captions cache on `captionsHash(project)` — every scene's audio hash plus the gap — so editing media or colours doesn't re-transcribe, while changing narration or scene order does.
 
+## Remotion (`packages/video`)
+
+- **Two entry points, deliberately.** `src/index.ts` calls `registerRoot()` and is referenced *by file path* by the CLI/bundler only. `src/exports.ts` is the package export — components with no side effects — because `registerRoot` firing in the browser when the studio's Player imports `ShortsBasic` would be wrong. The Player mounts the same component the renderer bundles, so preview and output can't drift.
+- **Composition props must be a `type`, not an `interface`.** Remotion constrains them to `Record<string, unknown>`, and TypeScript gives type aliases an implicit index signature but not interfaces — an interface fails with a confusing variance error.
+- `calculateMetadata` Zod-parses the manifest and returns width/height/fps/durationInFrames **from it**, so format and length are never hardcoded in the composition.
+- The composition reads frame offsets, it never computes them. All timing came from `compileManifest`/`computeSceneTimeline` upstream.
+- Captions render outside the scene `<Sequence>`s: their timings are in whole-timeline space and must not be re-based per scene. Lines are grouped at compile time and **split at scene boundaries** — a line spanning a cut holds the previous scene's words over the next scene's picture (seen and fixed in phase 7).
+- Exactly one `<Audio>` (the mixed master). Never mount the individual voiceover clips.
+- `GET /api/projects/:id/manifest` serves the `pathMode: "http"` manifest for the Player; the renderer (phase 8) compiles with `"fs"` instead.
+
 ## Providers (`apps/server/src/providers/`)
 
 All four capability interfaces live in `types.ts` (TTS implemented; Image/Video/Stock defined but unimplemented). Each carries `isConfigured(settings)` so the UI can ask whether a key is present without ever seeing it. Registered by `providerId` in `registry.ts` — adding a provider is a new file plus one registry line, never a change to `services/`.

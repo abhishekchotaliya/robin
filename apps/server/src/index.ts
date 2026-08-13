@@ -7,6 +7,7 @@ import { captionsRoutes } from "./routes/captions.ts";
 import { filesRoutes } from "./routes/files.ts";
 import { healthRoutes } from "./routes/health.ts";
 import { jobsRoutes } from "./routes/jobs.ts";
+import { manifestRoutes } from "./routes/manifest.ts";
 import { mixRoutes } from "./routes/mix.ts";
 import { projectsRoutes } from "./routes/projects.ts";
 import { settingsRoutes } from "./routes/settings.ts";
@@ -35,6 +36,7 @@ app.route("/api/projects", assetsRoutes);
 app.route("/api/projects", ttsRoutes);
 app.route("/api/projects", captionsRoutes);
 app.route("/api/projects", mixRoutes);
+app.route("/api/projects", manifestRoutes);
 app.route("/api/projects", projectsRoutes);
 app.route("/files", filesRoutes);
 
