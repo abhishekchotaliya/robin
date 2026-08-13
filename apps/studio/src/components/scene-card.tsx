@@ -1,10 +1,11 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical, Image, Mic, Trash2 } from "lucide-react";
-import { estimateSceneDurationMs, sceneAudioHash, type Project, type Scene } from "@app/core";
+import { estimateSceneDurationMs, sceneAudioHash, type Asset, type Project, type Scene } from "@app/core";
 import { Button } from "@/components/ui/button.tsx";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip.tsx";
 import { cn } from "@/lib/utils.ts";
+import { assetUrl } from "@/lib/api.ts";
 import { formatDuration } from "@/lib/format.ts";
 
 const PREVIEW_WORDS = 8;
@@ -39,6 +40,8 @@ export function SceneCard({
   scene,
   index,
   voice,
+  projectSlug,
+  asset,
   selected,
   onSelect,
   onDelete,
@@ -47,6 +50,8 @@ export function SceneCard({
   scene: Scene;
   index: number;
   voice: Project["voice"];
+  projectSlug: string;
+  asset: Asset | null;
   selected: boolean;
   onSelect: () => void;
   onDelete: () => void;
@@ -82,9 +87,26 @@ export function SceneCard({
 
       <button type="button" onClick={onSelect} className="flex min-w-0 flex-1 gap-2 text-left">
         <div
-          className="mt-0.5 h-10 w-6 shrink-0 rounded-sm border border-white/5"
+          className="mt-0.5 h-10 w-6 shrink-0 overflow-hidden rounded-sm border border-white/5"
           style={{ backgroundColor: scene.media.color }}
-        />
+        >
+          {asset?.kind === "image" && (
+            <img
+              src={assetUrl(projectSlug, asset.filename)}
+              alt=""
+              className="h-full w-full object-cover"
+              loading="lazy"
+            />
+          )}
+          {asset?.kind === "video" && (
+            <video
+              src={assetUrl(projectSlug, asset.filename)}
+              className="h-full w-full object-cover"
+              muted
+              preload="metadata"
+            />
+          )}
+        </div>
         <div className="min-w-0 flex-1 space-y-1">
           <div className="flex items-center gap-1.5">
             <span className="text-muted-foreground text-xs tabular-nums">{index + 1}</span>

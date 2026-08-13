@@ -19,3 +19,9 @@ export class KeyedMutex {
 }
 
 export const projectMutex = new KeyedMutex();
+
+// Deliberately a SEPARATE instance from projectMutex, not the same one keyed
+// differently: deleting an asset has to update project.json to clear scene
+// references, and a nested run() on the same instance and key would wait on
+// its own tail forever.
+export const assetMutex = new KeyedMutex();

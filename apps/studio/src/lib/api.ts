@@ -1,5 +1,6 @@
 import {
   ApiErrorSchema,
+  AssetSchema,
   CreateProjectRequestSchema,
   HealthSchema,
   ProjectListItemSchema,
@@ -27,9 +28,13 @@ export class ApiError extends Error {
 }
 
 async function request<T>(path: string, schema: z.ZodType<T>, init?: RequestInit): Promise<T> {
+  // Never set Content-Type for FormData — the browser has to supply it
+  // itself so it can include the multipart boundary. Setting it by hand
+  // produces a body the server can't parse.
+  const isFormData = init?.body instanceof FormData;
   const res = await fetch(`/api${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...init?.headers },
+    headers: isFormData ? init?.headers : { "Content-Type": "application/json", ...init?.headers },
   });
 
   if (!res.ok) {
@@ -65,6 +70,22 @@ export const api = {
     }),
 
   deleteProject: (id: string) => request<void>(`/projects/${id}`, z.void(), { method: "DELETE" }),
+
+  listAssets: (projectId: string) => request(`/projects/${projectId}/assets`, z.array(AssetSchema)),
+
+  uploadAssets: (projectId: string, files: File[]) => {
+    const form = new FormData();
+    for (const file of files) form.append("files", file);
+    return request(`/projects/${projectId}/assets`, z.array(AssetSchema), { method: "POST", body: form });
+  },
+
+  deleteAsset: (projectId: string, assetId: string) =>
+    request<void>(`/projects/${projectId}/assets/${assetId}`, z.void(), { method: "DELETE" }),
 };
+
+// Media is served by the server, not bundled — the browser can't read disk.
+export function assetUrl(projectSlug: string, filename: string): string {
+  return `/files/${projectSlug}/assets/${filename}`;
+}
 
 export type { Project };

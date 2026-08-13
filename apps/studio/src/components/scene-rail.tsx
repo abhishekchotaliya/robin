@@ -15,7 +15,7 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { Plus } from "lucide-react";
-import { moveScene, type Project, type Scene } from "@app/core";
+import { moveScene, type Asset, type Project, type Scene } from "@app/core";
 import { Button } from "@/components/ui/button.tsx";
 import { ScrollArea } from "@/components/ui/scroll-area.tsx";
 import {
@@ -32,6 +32,7 @@ import { SceneCard } from "@/components/scene-card.tsx";
 
 export function SceneRail({
   project,
+  assets,
   selectedSceneId,
   onSelect,
   onReorder,
@@ -39,6 +40,7 @@ export function SceneRail({
   onDeleteScene,
 }: {
   project: Project;
+  assets: Asset[];
   selectedSceneId: string | null;
   onSelect: (sceneId: string) => void;
   onReorder: (scenes: Scene[]) => void;
@@ -83,6 +85,8 @@ export function SceneRail({
                   scene={scene}
                   index={index}
                   voice={project.voice}
+                  projectSlug={project.slug}
+                  asset={assets.find((a) => a.id === scene.media.assetId) ?? null}
                   selected={scene.id === selectedSceneId}
                   onSelect={() => onSelect(scene.id)}
                   onDelete={() => setPendingDelete(scene)}

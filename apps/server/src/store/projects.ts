@@ -19,7 +19,7 @@ import { getSettings } from "./settings.ts";
 
 const PROJECT_FILE = "project.json";
 
-function projectDir(slug: string): string {
+export function projectDir(slug: string): string {
   return join(PROJECTS_DIR, slug);
 }
 
@@ -45,7 +45,7 @@ async function tryReadProject(slug: string): Promise<Project | null> {
 // Folders are named by slug; the API deals in ids. Fine to scan at this
 // scale — see plan §2: add an index only if listing hundreds of projects
 // gets slow.
-async function findProjectSlugById(id: string): Promise<string | null> {
+export async function findProjectSlugById(id: string): Promise<string | null> {
   for (const slug of await listProjectSlugs()) {
     const project = await tryReadProject(slug);
     if (project?.id === id) return slug;

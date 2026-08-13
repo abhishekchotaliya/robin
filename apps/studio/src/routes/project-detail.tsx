@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import { ArrowLeft, Film, Image, Music, Play } from "lucide-react";
+import { ArrowLeft, Film, Music, Play } from "lucide-react";
 import { estimateSceneDurationMs } from "@app/core";
 import { Button } from "@/components/ui/button.tsx";
 import { Input } from "@/components/ui/input.tsx";
@@ -15,6 +15,8 @@ import { StatusBadge } from "@/components/status-badge.tsx";
 import { SaveIndicator } from "@/components/save-indicator.tsx";
 import { SceneRail } from "@/components/scene-rail.tsx";
 import { ScriptTab } from "@/components/script-tab.tsx";
+import { MediaTab } from "@/components/media-tab.tsx";
+import { useAssets } from "@/hooks/useAssets.ts";
 import { ComingSoon } from "@/components/coming-soon.tsx";
 import { useProjectEditor } from "@/hooks/useProjectEditor.ts";
 import { useUIStore } from "@/stores/ui.ts";
@@ -25,6 +27,7 @@ const TABS = ["script", "media", "audio", "preview", "render"] as const;
 export function ProjectDetailPage() {
   const { id = "" } = useParams<{ id: string }>();
   const editor = useProjectEditor(id);
+  const { data: assets } = useAssets(id);
   const { project, status, flush, update, setScenes, updateScene, addScene, deleteScene } = editor;
 
   const selectedSceneId = useUIStore((s) => s.selectedSceneId);
@@ -144,6 +147,7 @@ export function ProjectDetailPage() {
         <ResizablePanel defaultSize="22%" minSize="15%" maxSize="40%">
           <SceneRail
             project={project}
+            assets={assets ?? []}
             selectedSceneId={selectedScene?.id ?? null}
             onSelect={setSelectedSceneId}
             onReorder={setScenes}
@@ -181,12 +185,26 @@ export function ProjectDetailPage() {
                 )}
               </TabsContent>
               <TabsContent value="media">
-                <ComingSoon
-                  icon={Image}
-                  title="Media"
-                  description="Drop images and video, then assign them to scenes."
-                  phase={3}
-                />
+                {selectedScene && (
+                  <MediaTab
+                    project={project}
+                    scene={selectedScene}
+                    onUpdateScene={updateScene}
+                    // The server clears scene references when an asset is
+                    // deleted, but the local draft is authoritative and never
+                    // re-hydrates mid-edit — so mirror that clear here or the
+                    // editor keeps showing media that no longer exists.
+                    onAssetDeleted={(assetId) =>
+                      setScenes(
+                        project.scenes.map((s) =>
+                          s.media.assetId === assetId
+                            ? { ...s, media: { ...s.media, assetId: null, kind: "color" as const } }
+                            : s,
+                        ),
+                      )
+                    }
+                  />
+                )}
               </TabsContent>
               <TabsContent value="audio">
                 <ComingSoon
