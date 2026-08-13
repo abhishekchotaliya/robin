@@ -107,7 +107,15 @@ Seven-step server-side job, every step content-hash-cached:
 | 6 | mix | `ffmpeg-static` | `hashContent(vo hashes…, bgm settings)` |
 | 7 | render | `@remotion/renderer` `renderMedia` | manifest hash |
 
-Known gotchas for when these phases get built: whisper.cpp needs **16kHz mono WAV** input, silently garbage otherwise — convert with ffmpeg first, and transcribe the *same* concatenated-with-gaps audio the timeline uses so word timestamps line up. The mix step (6) is one FFmpeg filter graph — concat with 300ms gaps → loop/trim BGM → `sidechaincompress` to duck under speech → `amix` → `loudnorm` to **-14 LUFS** (YouTube's target) → single `master.wav`. Remotion should only ever see that one audio file, never the individual VO clips.
+The mix step (6, not built) is one FFmpeg filter graph — concat with 300ms gaps → loop/trim BGM → `sidechaincompress` to duck under speech → `amix` → `loudnorm` to **-14 LUFS** (YouTube's target) → single `master.wav`. Remotion should only ever see that one audio file, never the individual VO clips. It must lay scenes out using `computeSceneTimeline` (below) or captions drift against picture.
+
+## Timeline and captions
+
+- **`computeSceneTimeline(project)` in core is the single source of scene start times.** `compileManifest` (frames Remotion renders) and the concatenated audio whisper transcribes both derive from it, and a test asserts they agree — if they ever diverge, captions slide out of sync with the picture. The phase-6 mix must use it too. `SCENE_GAP_MS` lives there for the same reason.
+- **whisper.cpp accepts 16-bit 16kHz mono WAV and nothing else** — hand it an mp3 or 44.1kHz audio and it emits *silently wrong* timestamps rather than an error. `services/audio-concat.ts` normalizes every clip to that format before concatenating (via the concat demuxer, so the join is a stream copy).
+- **Don't pre-create the whisper directory.** `installWhisperCpp` treats an existing folder without the compiled binary as a broken install and refuses to run; it creates the folder itself. Install lives at `~/VideoStudio/.whisper` — one shared build+model per machine, not per project. First run compiles whisper.cpp (~1 min) and downloads the model; later runs are seconds.
+- Whisper emits punctuation as separate tokens and gives short tokens zero-length spans (`start === end`), which can never highlight during playback. `normalizeWords` in core merges punctuation onto the preceding word and guarantees every word occupies real time without overrunning the next.
+- Captions cache on `captionsHash(project)` — every scene's audio hash plus the gap — so editing media or colours doesn't re-transcribe, while changing narration or scene order does.
 
 ## Providers (`apps/server/src/providers/`)
 

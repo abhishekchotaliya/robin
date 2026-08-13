@@ -1,12 +1,7 @@
 import type { Asset } from "../schemas/asset.ts";
 import type { ManifestCaptionLine, ManifestScene, ManifestWord, RenderManifest } from "../schemas/manifest.ts";
 import type { Project } from "../schemas/project.ts";
-import { estimateSceneDurationMs } from "./duration.ts";
-
-// Small silence between scene VOs, baked in at both mix time (ffmpeg, Phase
-// 6) and here (timeline math) — they must agree or captions drift out of
-// sync with picture.
-export const SCENE_GAP_MS = 300;
+import { computeSceneTimeline } from "./timeline.ts";
 
 export interface CompileManifestOptions {
   /** "http" for the browser Player (needs /files/* URLs); "fs" for renderMedia (needs absolute paths). */
@@ -63,19 +58,23 @@ function groupWordsIntoLines(words: ManifestWord[], maxWordsPerLine: number): Ma
 export function compileManifest(project: Project, opts: CompileManifestOptions): RenderManifest {
   const assetsById = new Map(opts.assets.map((a) => [a.id, a]));
   const fps = project.format.fps;
-  const orderedScenes = [...project.scenes].sort((a, b) => a.order - b.order);
+  const scenesById = new Map(project.scenes.map((s) => [s.id, s]));
+
+  // Offsets come from the shared timeline helper, not local arithmetic — the
+  // captions step transcribes audio built from these same numbers.
+  const timeline = computeSceneTimeline(project);
 
   const scenes: ManifestScene[] = [];
-  let cursorMs = 0;
-  for (const scene of orderedScenes) {
-    const durationMs = scene.audio?.durationMs ?? estimateSceneDurationMs(scene.text);
+  for (const entry of timeline.entries) {
+    const scene = scenesById.get(entry.sceneId);
+    if (!scene) continue;
     const src =
       scene.media.kind === "color" ? null : resolveMediaSrc(scene.media.assetId, assetsById, project, opts);
 
     scenes.push({
       id: scene.id,
-      from: msToFrames(cursorMs, fps),
-      durationInFrames: Math.max(1, msToFrames(durationMs, fps)),
+      from: msToFrames(entry.startMs, fps),
+      durationInFrames: Math.max(1, msToFrames(entry.durationMs, fps)),
       media: {
         kind: scene.media.kind,
         src,
@@ -85,10 +84,8 @@ export function compileManifest(project: Project, opts: CompileManifestOptions):
       },
       overlayText: scene.overlayText,
     });
-
-    cursorMs += durationMs + SCENE_GAP_MS;
   }
-  const totalDurationMs = orderedScenes.length > 0 ? cursorMs - SCENE_GAP_MS : 0;
+  const totalDurationMs = timeline.totalDurationMs;
 
   return {
     width: project.format.width,

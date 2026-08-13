@@ -21,6 +21,13 @@ export const TtsRequestSchema = z.object({
 });
 export type TtsRequest = z.infer<typeof TtsRequestSchema>;
 
+// POST /api/projects/:id/captions
+export const CaptionsRequestSchema = z.object({
+  /** Re-transcribe even when the cached hash matches. */
+  force: z.boolean().optional(),
+});
+export type CaptionsRequest = z.infer<typeof CaptionsRequestSchema>;
+
 // PATCH /api/settings. API keys are write-only: they can be set here but the
 // GET response only ever reports whether one is configured.
 export const UpdateSettingsRequestSchema = z.object({

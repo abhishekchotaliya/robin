@@ -9,6 +9,8 @@ export * from "./schemas/api.ts";
 export * from "./helpers/slug.ts";
 export * from "./helpers/hash.ts";
 export * from "./helpers/duration.ts";
+export * from "./helpers/timeline.ts";
+export * from "./helpers/words.ts";
 export * from "./helpers/defaults.ts";
 export * from "./helpers/script.ts";
 export * from "./helpers/asset.ts";

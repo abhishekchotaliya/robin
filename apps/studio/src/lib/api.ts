@@ -1,6 +1,8 @@
 import {
   ApiErrorSchema,
   AssetSchema,
+  CaptionsFileSchema,
+  CaptionsRequestSchema,
   CreateProjectRequestSchema,
   HealthSchema,
   ProjectListItemSchema,
@@ -11,6 +13,7 @@ import {
   UpdateProjectRequestSchema,
   UpdateSettingsRequestSchema,
   VoiceOptionSchema,
+  type CaptionsRequest,
   type CreateProjectRequest,
   type Project,
   type RenderJob,
@@ -105,6 +108,16 @@ export const api = {
     request(`/projects/${projectId}/tts`, RenderJobSchema, {
       method: "POST",
       body: JSON.stringify(TtsRequestSchema.parse(body)),
+    }),
+
+  // null is a normal answer here: captions simply haven't been generated yet.
+  getCaptions: (projectId: string) =>
+    request(`/projects/${projectId}/captions`, CaptionsFileSchema.nullable()),
+
+  generateCaptions: (projectId: string, body: CaptionsRequest) =>
+    request(`/projects/${projectId}/captions`, RenderJobSchema, {
+      method: "POST",
+      body: JSON.stringify(CaptionsRequestSchema.parse(body)),
     }),
 
   getJob: (jobId: string) => request(`/jobs/${jobId}`, RenderJobSchema),

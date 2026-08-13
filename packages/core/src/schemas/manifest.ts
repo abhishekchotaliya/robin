@@ -19,6 +19,17 @@ export const ManifestCaptionLineSchema = z.object({
 });
 export type ManifestCaptionLine = z.infer<typeof ManifestCaptionLineSchema>;
 
+// captions/words.json — whisper output in the project's timeline space,
+// with the hash it was produced from so a re-run can skip when nothing that
+// affects the audio has changed.
+export const CaptionsFileSchema = z.object({
+  hash: z.string(),
+  model: z.string(),
+  createdAt: z.string(),
+  words: z.array(ManifestWordSchema),
+});
+export type CaptionsFile = z.infer<typeof CaptionsFileSchema>;
+
 export const ManifestSceneMediaSchema = z.object({
   kind: z.enum(["image", "video", "color"]),
   src: z.string().nullable(), // URL (preview, pathMode "http") or absolute path (render, pathMode "fs")

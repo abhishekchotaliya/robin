@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select.tsx";
+import { CaptionsSection } from "@/components/captions-section.tsx";
 import { useSettings, useUpdateSettings, useVoices } from "@/hooks/useSettings.ts";
 import { useJobStream } from "@/hooks/useJob.ts";
 import { api, ApiError, projectFileUrl } from "@/lib/api.ts";
@@ -71,7 +72,7 @@ export function AudioTab({
   onJobFinished,
 }: {
   project: Project;
-  onUpdate: (patch: { voice: Project["voice"] }) => void;
+  onUpdate: (patch: Partial<Pick<Project, "voice" | "captions">>) => void;
   /** Pulls server-written scene.audio back into the editor draft. */
   onJobFinished: () => void;
 }) {
@@ -245,6 +246,10 @@ export function AudioTab({
           </div>
         )}
       </div>
+
+      <Separator />
+
+      <CaptionsSection project={project} onUpdate={onUpdate} />
 
       {withAudio.length > 0 && (
         <div className="space-y-2">
