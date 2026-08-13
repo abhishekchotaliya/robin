@@ -1,0 +1,20 @@
+{
+  "name": "faceless-video-studio",
+  "private": true,
+  "version": "0.0.1",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "trustedDependencies": [
+    "ffmpeg-static"
+  ],
+  "scripts": {
+    "dev": "bun --filter='*' dev",
+    "typecheck": "bun --filter='*' typecheck",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}
