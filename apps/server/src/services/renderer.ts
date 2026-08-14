@@ -123,10 +123,15 @@ export async function renderProject(
   const serveUrl = await getBundle(project, ctx);
   ctx.throwIfCancelled();
 
+  // Unlike renderMedia, selectComposition takes no cancelSignal — this
+  // timeout is the only thing standing between a wedged headless Chromium
+  // (seen in practice: launches fine, sits at 0% CPU, no error) and a job
+  // stuck at 0% forever with the Cancel button doing nothing.
   const composition = await selectComposition({
     serveUrl,
     id: COMPOSITION_ID,
     inputProps: { manifest },
+    timeoutInMilliseconds: 30_000,
   });
 
   const rendersDir = join(projectDir(project.slug), "renders");
