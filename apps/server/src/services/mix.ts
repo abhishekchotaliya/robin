@@ -4,7 +4,7 @@ import { mixHash, type Project } from "@app/core";
 import { NotFoundError } from "../lib/errors.ts";
 import { pathExists } from "../lib/fsx.ts";
 import type { JobContext } from "../jobs/queue.ts";
-import { getProject, projectDir } from "../store/projects.ts";
+import { getMasterHash, getProject, projectDir, setMasterHash } from "../store/projects.ts";
 import { listAssets } from "../store/assets.ts";
 import { MASTER_FORMAT, buildConcatenatedVo } from "./audio-concat.ts";
 import { runFfmpeg } from "./ffmpeg.ts";
@@ -36,10 +36,9 @@ export async function buildMasterAudio(
   const dir = projectDir(project.slug);
   const outputPath = join(dir, MASTER_FILE);
   const expectedHash = mixHash(project);
-  const stampPath = join(dir, ".cache", "master.hash");
 
-  if (!opts.force && (await pathExists(outputPath)) && (await pathExists(stampPath))) {
-    const previous = (await Bun.file(stampPath).text()).trim();
+  if (!opts.force && (await pathExists(outputPath))) {
+    const previous = await getMasterHash(projectId);
     if (previous === expectedHash) {
       ctx.log("Master audio is already up to date.");
       return null;
@@ -79,7 +78,7 @@ export async function buildMasterAudio(
     );
   }
 
-  await Bun.write(stampPath, expectedHash);
+  await setMasterHash(projectId, expectedHash);
   ctx.setProgress(1);
   ctx.log(`Master audio written (${(durationMs / 1000).toFixed(1)}s, ${TARGET_LUFS} LUFS target).`);
   return null;

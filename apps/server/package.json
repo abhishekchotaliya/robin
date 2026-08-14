@@ -6,7 +6,9 @@
   "scripts": {
     "dev": "bun --hot src/index.ts",
     "start": "bun src/index.ts",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "db:generate": "drizzle-kit generate",
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
     "@app/core": "workspace:*",
@@ -16,13 +18,15 @@
     "@remotion/bundler": "4.0.509",
     "@remotion/install-whisper-cpp": "4.0.509",
     "@remotion/renderer": "4.0.509",
+    "drizzle-orm": "0.45.2",
     "ffmpeg-static": "5.3.0",
     "hono": "4.13.2",
     "remotion": "4.0.509",
     "zod": "4.4.3"
   },
   "devDependencies": {
-    "typescript": "^5.9.2",
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "drizzle-kit": "0.31.10",
+    "typescript": "^5.9.2"
   }
 }

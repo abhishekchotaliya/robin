@@ -1,13 +1,4 @@
-import { mkdir } from "node:fs/promises";
-import { join } from "node:path";
-import {
-  CaptionsFileSchema,
-  captionsHash,
-  normalizeWords,
-  type CaptionsFile,
-  type ManifestWord,
-  type Project,
-} from "@app/core";
+import { captionsHash, normalizeWords, type CaptionsFile, type ManifestWord } from "@app/core";
 import {
   downloadWhisperModel,
   installWhisperCpp,
@@ -16,9 +7,9 @@ import {
 } from "@remotion/install-whisper-cpp";
 import { WHISPER_DIR } from "../config.ts";
 import { NotFoundError } from "../lib/errors.ts";
-import { pathExists, readJson, writeJsonAtomic } from "../lib/fsx.ts";
 import type { JobContext } from "../jobs/queue.ts";
-import { getProject, projectDir } from "../store/projects.ts";
+import { readCaptions, writeCaptions } from "../store/captions.ts";
+import { getProject } from "../store/projects.ts";
 import { WHISPER_FORMAT, buildConcatenatedVo } from "./audio-concat.ts";
 
 // Pinned so an upgrade is a deliberate change: whisper.cpp's CLI flags and
@@ -28,24 +19,7 @@ const WHISPER_VERSION = "1.5.5";
 // ~150MB download. large-v3-turbo is better but ~1.5GB.
 const WHISPER_MODEL = "base.en";
 
-const CAPTIONS_FILE = "captions/words.json";
-
-function captionsPath(slug: string): string {
-  return join(projectDir(slug), CAPTIONS_FILE);
-}
-
-export async function readCaptions(projectId: string): Promise<CaptionsFile | null> {
-  const project = await getProject(projectId);
-  if (!project) throw new NotFoundError(`project ${projectId} not found`);
-  const file = captionsPath(project.slug);
-  if (!(await pathExists(file))) return null;
-  try {
-    return CaptionsFileSchema.parse(await readJson<unknown>(file));
-  } catch (err) {
-    console.error(`[captions] malformed words.json at ${file}, treating as absent:`, err);
-    return null;
-  }
-}
+export { readCaptions };
 
 /**
  * Transcribes the project's voiceover into word-level timestamps.
@@ -63,7 +37,6 @@ export async function generateCaptions(
   if (!project) throw new NotFoundError(`project ${projectId} not found`);
 
   const expectedHash = captionsHash(project);
-  const outputPath = captionsPath(project.slug);
 
   if (!opts.force) {
     const existing = await readCaptions(projectId);
@@ -119,8 +92,7 @@ export async function generateCaptions(
     words,
   };
 
-  await mkdir(join(projectDir(project.slug), "captions"), { recursive: true });
-  await writeJsonAtomic(outputPath, CaptionsFileSchema.parse(captions));
+  await writeCaptions(projectId, captions);
 
   ctx.setProgress(1);
   ctx.log("Captions complete.");

@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { AssetSchema } from "./asset.ts";
+import { CaptionsFileSchema } from "./manifest.ts";
 import { FormatPresetSchema, FpsOptionSchema, ProjectSchema, ProjectStatusSchema, ResolutionTierSchema } from "./project.ts";
 
 export const HealthSchema = z.object({
@@ -52,6 +54,20 @@ export const UpdateProjectRequestSchema = ProjectSchema.omit({
   updatedAt: true,
 }).partial();
 export type UpdateProjectRequest = z.infer<typeof UpdateProjectRequestSchema>;
+
+// GET /api/projects/:id/export and POST /api/projects/import — a portable
+// snapshot for backup, sharing, and hand-fixing. Media bytes are never
+// embedded, only referenced: import re-locates them via `sourceSlug` on the
+// same projects root and fails loudly if a referenced file is missing,
+// rather than producing a black frame at render time.
+export const ProjectExportSchema = z.object({
+  exportedAt: z.string(),
+  sourceSlug: z.string(),
+  project: ProjectSchema,
+  assets: z.array(AssetSchema),
+  captions: CaptionsFileSchema.nullable(),
+});
+export type ProjectExport = z.infer<typeof ProjectExportSchema>;
 
 // Uniform error shape for every non-2xx response.
 export const ApiErrorSchema = z.object({

@@ -1,6 +1,8 @@
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { PORT, ensureProjectsRoot } from "./config.ts";
+import { runMigrations } from "./db/client.ts";
+import { importFromDiskIfNeeded } from "./db/import-from-disk.ts";
 import { ApiHttpError } from "./lib/errors.ts";
 import { assetsRoutes } from "./routes/assets.ts";
 import { captionsRoutes } from "./routes/captions.ts";
@@ -15,6 +17,8 @@ import { settingsRoutes } from "./routes/settings.ts";
 import { ttsRoutes } from "./routes/tts.ts";
 
 await ensureProjectsRoot();
+runMigrations();
+await importFromDiskIfNeeded();
 
 const app = new Hono();
 

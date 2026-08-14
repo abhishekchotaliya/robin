@@ -22,7 +22,7 @@ Full build plan (all phases, UX spec, pipeline design): `/Users/axar7/.claude/pl
 ## Repo layout
 
 ```
-apps/server    Bun + Hono API — src/index.ts (assembly only), config.ts, routes/, store/, services/ (Phase 4+), providers/ (Phase 4+), jobs/ (Phase 8), lib/
+apps/server    Bun + Hono API — src/index.ts (assembly only), config.ts, db/ (Drizzle schema, client, migrations, mappers), routes/, store/, services/, providers/, jobs/, lib/
 apps/studio    React 19 + Vite + Tailwind 4 + shadcn — src/routes/ (pages), components/ (app + ui/ shadcn), hooks/, lib/api.ts, stores/ (Zustand, ephemeral UI only)
 packages/core  Zod schemas + pure helpers, NO build step — exports "./src/index.ts" directly, Bun and Vite both consume the TS source
 packages/video Remotion project (Phase 7+) — scripts use `remotionb`
@@ -32,17 +32,17 @@ User project data lives **outside the repo**, default `~/VideoStudio/` (override
 
 ```
 ~/VideoStudio/
-  settings.json
+  studio.db               SQLite — projects, scenes, assets, captions, settings (see State below)
+  settings.json           legacy, read once by the importer then ignored; not written to anymore
   projects/<slug>/
-    project.json          single source of truth, atomic-written
-    assets.json            asset index (Phase 3+)
     assets/                 uploads
     audio/vo/<hash>.mp3    TTS output, content-hash named
-    audio/master.wav       mixed VO + ducked BGM (Phase 6+)
-    captions/words.json    whisper word timestamps (Phase 5+)
+    audio/master.wav       mixed VO + ducked BGM
     renders/                output mp4s + metadata
     .cache/                 remotion bundle, probe results
 ```
+
+Binaries only. Every JSON file that used to live per-project (`project.json`, `assets.json`, `captions/words.json`) is gone — that state now lives in `studio.db`. `slug` stays the folder name and stays immutable, since ffmpeg/whisper/Remotion need real filesystem paths and `projectDir(slug)` is threaded through 16+ call sites unchanged by the DB migration.
 
 ## Data model (`packages/core`)
 
@@ -53,19 +53,37 @@ Schemas live in `src/schemas/{project,asset,job,settings,manifest,api}.ts`, help
 - **RenderManifest is compiled, not stored.** `compileManifest(project, { pathMode, projectDir, assets, words, masterAudioExists })` produces frame-accurate scene offsets (300ms `SCENE_GAP_MS` between scenes), resolves media to either `/files/...` URLs (`pathMode: "http"`, for the browser Player) or absolute paths (`pathMode: "fs"`, for `renderMedia`), and pre-groups caption words into lines — never group captions per-frame in the Remotion component, that's a real performance trap.
 - **`hashContent(...parts)` is FNV-1a via BigInt, not `node:crypto`.** This is deliberate: `packages/core`'s `index.ts` does `export *` from every module, and the studio (browser) imports from the same barrel for the Zod schemas. A `node:crypto` import anywhere in that reachable graph breaks the browser build the moment anything touches `@app/core`, because native ESM evaluates the whole static import graph regardless of what's actually used. Keep every core helper runtime-agnostic (no `node:*`, no `Bun.*`) for the same reason.
 
+## State: SQLite via Drizzle (`apps/server/src/db/`)
+
+Metadata (projects, scenes, assets, captions, settings) lives in SQLite at `~/VideoStudio/studio.db`, behind Drizzle (`drizzle-orm/bun-sqlite` — wraps `bun:sqlite`, **zero native binaries**, which is the whole reason it won over Prisma: this repo already lost time twice to arch-specific binaries, see Native binaries below). Media binaries never moved — ffmpeg, whisper and Remotion need real filesystem paths, so `assets/`, `audio/`, `renders/`, `.cache/` are untouched.
+
+- **`db/schema.ts`** is the Drizzle table layout. **`db/mappers.ts`** is the only module that knows both the row shape and the core Zod shape — every function in it returns a value parsed through the matching core schema, so a mapper bug (missing field, wrong type) fails loudly there instead of surfacing as a confusing bug three services downstream. Nested value objects (`media`, `kenBurns`, `voice`, `bgm`, `captions` config, etc.) stay as `text(col, { mode: "json" })` columns — they're never queried independently, only scenes got their own table (FK to project, indexed on `(projectId, order)`) because they're the one thing worth querying/joining on later.
+- **The schema lives in `apps/server`, not `packages/core`** — core must stay runtime-agnostic (no `node:*`, no `Bun.*`) because the browser imports from the same barrel; Drizzle's `bun:sqlite` driver very much isn't. Zod schemas in core remain canonical for the API boundary regardless of where a value is stored.
+- **`store/` is still the only place that touches state** — every store function keeps the exact signature it had under the JSON design (`getProject`, `projectDir`, `updateProject`, etc.), so routes, services, jobs and the entire studio app didn't change. `findProjectSlugById` used to be an O(n) scan opening every `project.json`; it's now a primary-key lookup.
+- **`updateProject` still goes through `projectMutex`**, even though a DB transaction alone would prevent a torn write — the mutex also serializes the compile-manifest-and-derive-status work per project, which is a separate concern from write atomicity.
+- **PATCH is still shallow-merge, `scenes` still replaces wholesale**: when a patch includes `scenes`, the store deletes every existing scene row for that project and re-inserts the patch's array inside one transaction. Same contract as the old whole-array JSON write, just relational underneath.
+- **Asset ids are now a global primary key**, unlike the old per-project `assets.json` where an id only had to be unique within one file. `duplicateProject` and `POST /api/projects/import` both therefore generate fresh asset ids and **remap every `scene.media.assetId` / `project.bgm.assetId` through an old→new map** — skipping that step would leave the copy's scenes pointing at assets that don't exist under its own project id.
+- **`ownerId` is nullable on every table, unused locally** — added now so a future cloud (Postgres/Neon, same Drizzle schema and queries, different driver in `drizzle.config.ts`) doesn't need a `NOT NULL` migration on a populated table later.
+- **`db/import-from-disk.ts` runs once, at boot, only when the DB has zero projects.** It scans `projects/*/project.json` (the pre-migration layout), imports project + scenes + assets + captions + settings, and writes a `.migrated` marker beside each folder — the marker is documentation, not the gate; the gate is "DB is empty," so a project dropped into `projects/` by hand after the first boot is **not** picked up automatically. The JSON files are never deleted.
+- **`GET /api/projects/:id/export` / `POST /api/projects/import`** are the replacement for "the filesystem is hand-editable" — a single JSON document (project + scenes + assets index + captions), used for backup, sharing, and hand-fixing a broken project. Media is referenced by the original project's `slug`, never embedded; import checks every referenced asset file exists under `<sourceSlug>/assets/` *before* writing anything to the DB, and fails with a clear 400 listing the missing filenames rather than producing black frames at render time.
+- **Captions no longer have a file.** `captions/words.json` is gone; `store/captions.ts` is DB-backed (`readCaptions`/`writeCaptions`, keyed 1:1 on `projectId`), and `services/captions.ts` re-exports `readCaptions` so every existing caller (`routes/captions.ts`, `routes/manifest.ts`, `services/renderer.ts`) is unchanged.
+- **`.cache/master.hash` is gone too** — the mix step's stamp is now `projects.masterHash`, a narrow single-column read/write (`getMasterHash`/`setMasterHash` in `store/projects.ts`) that deliberately bypasses `updateProject` since it's not user-facing state and shouldn't bump `updatedAt` or recompute status.
+- **`pathExists` is files-only** — `dirExists` (not `pathExists`) is what the importer must check for `PROJECTS_DIR` itself, or the whole import silently no-ops (bit us once while building this: `pathExists` on a directory returns `false`).
+- Store tests (`store/projects.test.ts`) open the DB at `:memory:` via a `STUDIO_DB_FILE` env override on `db/client.ts`, read before that module's first import — a `beforeAll` dynamic-`import()`s the store modules only after setting `STUDIO_DB_FILE` and `VIDEO_STUDIO_ROOT`, since both are read at module-evaluation time and static imports are hoisted above any code that would set them in time.
+
 ## Server conventions (`apps/server`)
 
 - `index.ts` is assembly only (`app.route(...)`, `app.onError(...)`) — zero business logic.
 - Every route validated with `@hono/zod-validator`, hook written inline per call (not as a shared typed function — its `Hook<...>` generic is schema-specific per call site and fights a standalone wrapper's inference). Copy the inline pattern from `routes/projects.ts`.
 - **Uniform error shape everywhere**: `{ error: { code, message, issues? } }`. Throw `NotFoundError`/`ConflictError`/`ApiHttpError` from `lib/errors.ts`; the `app.onError` handler in `index.ts` maps them to the right status. Unexpected errors log full detail server-side, return a generic 500 `INTERNAL` message to the client.
-- **Atomic JSON writes only** (`lib/fsx.ts`: serialize → write `<file>.tmp` → `rename`). A half-written `project.json` from a crash mid-write is unrecoverable data loss.
-- **Per-key async mutex** (`lib/mutex.ts`, `projectMutex`) around every project read-modify-write. Without it, overlapping PATCHes (autosave firing while the user keeps typing) race and the loser's edit silently vanishes.
-- **PATCH is shallow-merge, not deep-merge.** `scenes` (and any other array/object field) replaces wholesale when present in the patch body — the client always sends the full array. Deep-merging arrays is a bug factory.
-- Projects are looked up by `id` but folders are named by `slug` (slug is immutable after creation; rename only changes `title`). `store/projects.ts` scans `projects/` and matches on `id` — fine at this scale; add an index only if listing hundreds of projects gets slow. A `project.json` that fails to parse is skipped and logged, never thrown — one corrupt project must never take down the whole list, and it also means that project becomes undeletable by `id` until its `id` is fixed by hand (expected, not a bug — filesystem is hand-editable by design).
-- `settings.json` lives at `~/VideoStudio/settings.json`, lazily created with defaults on first read via `store/settings.ts`. It holds provider API keys — `getSettings()` is server-internal only; never send its raw shape to the browser (use `toPublicSettings()` from core when a settings route is added).
-- **`/files/*` is the only route that serves arbitrary paths, and everything after `/files/` is attacker-controlled.** `resolveWithinProjects()` (`routes/files.ts`) decodes, normalizes, resolves to an absolute path, and requires the result to sit strictly inside the projects root before any read — a `..` string check alone is not enough (percent-encoded traversal decodes into an escape afterwards). It also rejects NUL bytes and malformed encodings. `routes/files.test.ts` covers the attack set; extend it rather than loosening the guard. Note this is what keeps `settings.json` (one level above `projects/`, holding API keys) unreachable over HTTP.
+- **Multi-row writes are Drizzle transactions** (`db.transaction(async (tx) => ...)`), not atomic-rename-a-JSON-file anymore — see State above. `lib/fsx.ts`'s `writeJsonAtomic`/`readJson` still exist and are still correct for the handful of things that are still plain files (nothing in the pipeline currently needs them, but don't delete them for that reason alone).
+- **Per-key async mutex** (`lib/mutex.ts`, `projectMutex`) around every project read-modify-write, kept even though the DB transaction alone prevents a torn write — it also serializes the compile-manifest-and-derive-status work per project.
+- **PATCH is shallow-merge, not deep-merge.** `scenes` (and any other array/object field) replaces wholesale when present in the patch body — the client always sends the full array. Deep-merging arrays is a bug factory. Underneath, a `scenes` patch means "delete this project's scene rows, re-insert the patch's array," inside one transaction.
+- Projects are looked up by `id` (a primary-key lookup, `findProjectSlugById`) but folders are still named by `slug` (slug is immutable after creation; rename only changes `title`).
+- `settings` is a single-row DB table (id always `1`), lazily created with defaults on first read via `store/settings.ts`. It holds provider API keys — `getSettings()` is server-internal only; never send its raw shape to the browser (`toPublicSettings()` from core is what settings routes actually return).
+- **`/files/*` is the only route that serves arbitrary paths, and everything after `/files/` is attacker-controlled.** `resolveWithinProjects()` (`routes/files.ts`) decodes, normalizes, resolves to an absolute path, and requires the result to sit strictly inside the projects root before any read — a `..` string check alone is not enough (percent-encoded traversal decodes into an escape afterwards). It also rejects NUL bytes and malformed encodings. `routes/files.test.ts` covers the attack set; extend it rather than loosening the guard. Note this is what keeps `studio.db` (one level above `projects/`, holding every project's metadata and every provider API key) unreachable over HTTP — verified with `curl --path-as-is 'localhost:8787/files/../studio.db'` → 404.
 - **Uploads are validated before anything touches disk**: the kind comes from an allowlisted mime (`ACCEPTED_MIME_TYPES` in core), never the file extension, and the whole batch is checked before the first write so a bad file can't leave a half-finished upload behind. Stored names are `sanitizeFilename`d and uuid-prefixed so two `sunset.jpg`s can't collide.
-- **`assetMutex` is a separate `KeyedMutex` instance from `projectMutex` on purpose** — deleting an asset updates `project.json` to clear scene references, and a nested `run()` on the same instance and key would wait on its own tail forever.
+- **`assetMutex` is a separate `KeyedMutex` instance from `projectMutex` on purpose** — deleting an asset calls `updateProject` to clear scene references, and a nested `run()` on the same instance and key would wait on its own tail forever.
 - Deleting an asset clears every scene that referenced it (server side), because a dangling `assetId` renders as a black frame later.
 
 ## UI conventions (`apps/studio`)
@@ -115,7 +133,7 @@ One FFmpeg filter graph produces `audio/master.wav`: concatenated voiceover (300
 - `duckingDb` is a dB figure in the UI but a compressor wants a *ratio*, so `duckingRatio()` converts. Measured: about 10 dB of reduction under speech with full recovery in the gaps.
 - `loudnorm=I=-14:TP=-1.5` targets YouTube's normalization point so the platform leaves the audio alone. Verify a master with `ffmpeg -i master.wav -af loudnorm=print_format=json -f null -` and read **`input_i`** (the measurement of that file) — `output_i` describes what a further pass would do and is not the answer.
 - Concat format is parameterised (`WHISPER_FORMAT` 16kHz mono vs `MASTER_FORMAT` 48kHz stereo) because whisper's requirement would otherwise degrade the shipped audio.
-- Cached on `mixHash` (voiceover hashes + every bgm setting), stamped in `.cache/master.hash`. `GET /api/projects/:id/mix` reports `exists`/`upToDate` so the UI can label its button honestly.
+- Cached on `mixHash` (voiceover hashes + every bgm setting), stamped in the `projects.masterHash` DB column (`getMasterHash`/`setMasterHash`, `store/projects.ts`) — replaces the old `.cache/master.hash` file. `GET /api/projects/:id/mix` reports `exists`/`upToDate` so the UI can label its button honestly.
 
 ## Timeline and captions
 
@@ -157,7 +175,7 @@ All four capability interfaces live in `types.ts` (TTS implemented; Image/Video/
 
 - **Thumbnails aren't stored in `project.json` — they're derived.** `listProjects()` checks whether `renders/thumbnail.jpg` actually exists on disk before returning a `thumbnailUrl`; it never infers one from `lastRender`. A project rendered before poster-frame extraction existed has a `lastRender` but no file, and claiming a URL anyway is a broken image on every card. `extractPosterFrame()` (`services/ffmpeg.ts`) seeks 0.5s into the output, deliberately past frame 0 — scenes fade in from black, so frame 0 is a black rectangle. A failed extraction logs and moves on; it must never fail the render, since the video the user asked for is already on disk.
 - **Health checks execute the binary, they don't just check it exists.** The failure mode this catches in practice is a file that's present but won't run — wrong architecture, or missing its executable bit because a package manager skipped a `postinstall`. Both produce a confusing mid-render error otherwise; surfacing them in Settings turns that into an actionable message before the user ever presses render.
-- **`duplicateProject` copies assets, voiceover and captions but not `renders/` or `.cache/`.** Those belong to the *original's* output — carrying them over would let a stale video pass as the copy's own before the copy has ever been rendered.
+- **`duplicateProject` copies assets, voiceover and captions but not `renders/` or `.cache/`.** Those belong to the *original's* output — carrying them over would let a stale video pass as the copy's own before the copy has ever been rendered. Assets and captions are DB rows now, not files — the copy gets fresh asset ids (see State above) and its own `captions` row with the same `hash`, which stays valid immediately since the underlying scene audio didn't change.
 - Scene deletion via the `Delete`/`Backspace` key reuses the exact same confirm dialog as the trash icon (`scene-rail.tsx`) — guarded so it never fires while an input, textarea, or `contenteditable` has focus, or deleting a character in the narration box would delete the scene instead.
 
 ## Verification
@@ -166,4 +184,4 @@ All four capability interfaces live in `types.ts` (TTS implemented; Image/Video/
 bun install && bun dev
 ```
 
-`bun run typecheck` must be clean across all packages before every commit. Where `bun test` files exist (currently `packages/core/src/helpers/*.test.ts`), they must pass too.
+`bun run typecheck` must be clean across all packages before every commit. Where `bun test` files exist (`packages/core/src/helpers/*.test.ts`, `apps/server/src/routes/files.test.ts`, `apps/server/src/store/projects.test.ts`), they must pass too.

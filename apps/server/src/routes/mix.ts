@@ -5,7 +5,7 @@ import { NotFoundError, validationErrorResponse } from "../lib/errors.ts";
 import { enqueueJob } from "../jobs/queue.ts";
 import { pathExists } from "../lib/fsx.ts";
 import { MASTER_FILE, buildMasterAudio } from "../services/mix.ts";
-import { getProject, projectDir } from "../store/projects.ts";
+import { getMasterHash, getProject, projectDir } from "../store/projects.ts";
 import { join } from "node:path";
 
 export const mixRoutes = new Hono()
@@ -17,8 +17,7 @@ export const mixRoutes = new Hono()
 
     const dir = projectDir(project.slug);
     const exists = await pathExists(join(dir, MASTER_FILE));
-    const stampPath = join(dir, ".cache", "master.hash");
-    const stamp = (await pathExists(stampPath)) ? (await Bun.file(stampPath).text()).trim() : null;
+    const stamp = exists ? await getMasterHash(project.id) : null;
 
     return c.json({
       exists,
