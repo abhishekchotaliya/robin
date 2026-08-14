@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { FormatPresetSchema, ProjectSchema, ProjectStatusSchema } from "./project.ts";
+import { FormatPresetSchema, FpsOptionSchema, ProjectSchema, ProjectStatusSchema, ResolutionTierSchema } from "./project.ts";
 
 export const HealthSchema = z.object({
   ok: z.boolean(),
@@ -36,6 +36,8 @@ export type ProjectListItem = z.infer<typeof ProjectListItemSchema>;
 export const CreateProjectRequestSchema = z.object({
   title: z.string().min(1),
   formatPreset: FormatPresetSchema,
+  resolution: ResolutionTierSchema,
+  fps: FpsOptionSchema,
   templateId: z.string(),
 });
 export type CreateProjectRequest = z.infer<typeof CreateProjectRequestSchema>;

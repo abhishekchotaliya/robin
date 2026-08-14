@@ -16,6 +16,8 @@ function makeProject() {
     title: "Test Project",
     slug: "test-project",
     formatPreset: "shorts",
+    resolution: "1080p",
+    fps: 30,
     templateId: "shorts-basic",
     defaults: settings,
   });

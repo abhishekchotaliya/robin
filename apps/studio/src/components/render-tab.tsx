@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Check, CircleDashed, Film, Loader2, Play, X } from "lucide-react";
-import type { JobStep, Project, RenderJob } from "@app/core";
+import { describeFormat, resolveFormat, type JobStep, type Project, type RenderJob } from "@app/core";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button.tsx";
@@ -9,11 +9,106 @@ import { Badge } from "@/components/ui/badge.tsx";
 import { Progress } from "@/components/ui/progress.tsx";
 import { ScrollArea } from "@/components/ui/scroll-area.tsx";
 import { Separator } from "@/components/ui/separator.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select.tsx";
 import { useJobStream } from "@/hooks/useJob.ts";
 import { api, ApiError, projectFileUrl } from "@/lib/api.ts";
 import { formatBytes } from "@app/core";
 import { formatRelativeTime } from "@/lib/format.ts";
+import { ASPECT_OPTIONS, FPS_OPTIONS, RESOLUTION_OPTIONS } from "@/lib/video-format.ts";
 import { cn } from "@/lib/utils.ts";
+
+function OutputFormatSection({
+  project,
+  onUpdate,
+  disabled,
+}: {
+  project: Project;
+  onUpdate: (patch: Partial<Pick<Project, "format">>) => void;
+  disabled: boolean;
+}) {
+  // A hand-edited project.json can hold dimensions that don't match any
+  // (aspect, resolution) combo. Rather than crash, fall back to a sensible
+  // default — picking it here just resets the pickers, it doesn't touch
+  // project.format until the user actually changes a value.
+  const current = describeFormat(project.format) ?? { aspect: "shorts" as const, resolution: "1080p" as const, fps: 30 as const };
+
+  function apply(patch: Partial<typeof current>) {
+    const next = { ...current, ...patch };
+    onUpdate({ format: resolveFormat(next.aspect, next.resolution, next.fps) });
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <Label>Output format</Label>
+        <span className="text-muted-foreground text-xs tabular-nums">
+          {project.format.width}×{project.format.height} · {project.format.fps}fps
+        </span>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Select
+          value={current.aspect}
+          disabled={disabled}
+          onValueChange={(v) => apply({ aspect: v as typeof current.aspect })}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {ASPECT_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label} ({opt.aspect})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select
+          value={current.resolution}
+          disabled={disabled}
+          onValueChange={(v) => apply({ resolution: v as typeof current.resolution })}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {RESOLUTION_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+
+        <Select
+          value={String(current.fps)}
+          disabled={disabled}
+          onValueChange={(v) => apply({ fps: Number(v) as typeof current.fps })}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {FPS_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={String(opt.value)}>
+                {opt.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <p className="text-muted-foreground text-xs">
+        Changing this makes the current video out of date — the next render picks it up.
+      </p>
+    </div>
+  );
+}
 
 // The pipeline in the order the job runs it, so the checklist reads as
 // progress rather than as a legend.
@@ -50,7 +145,15 @@ function StepRow({ step, job }: { step: (typeof STEPS)[number]; job: RenderJob |
   );
 }
 
-export function RenderTab({ project, onJobFinished }: { project: Project; onJobFinished: () => void }) {
+export function RenderTab({
+  project,
+  onUpdate,
+  onJobFinished,
+}: {
+  project: Project;
+  onUpdate: (patch: Partial<Pick<Project, "format">>) => void;
+  onJobFinished: () => void;
+}) {
   const [starting, setStarting] = useState(false);
 
   const renders = useQuery({
@@ -83,6 +186,10 @@ export function RenderTab({ project, onJobFinished }: { project: Project; onJobF
 
   return (
     <div className="space-y-6 p-6">
+      <OutputFormatSection project={project} onUpdate={onUpdate} disabled={isRunning || starting} />
+
+      <Separator />
+
       <div className="flex flex-wrap items-center gap-3">
         <Button size="lg" disabled={!hasScript || isRunning || starting} onClick={() => void start(false)}>
           {isRunning || starting ? (

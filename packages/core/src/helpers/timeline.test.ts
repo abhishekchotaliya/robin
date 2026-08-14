@@ -11,6 +11,8 @@ function projectWithScenes(durations: number[]) {
     title: "Timeline",
     slug: "timeline",
     formatPreset: "shorts",
+    resolution: "1080p",
+    fps: 30,
     templateId: "shorts-basic",
     defaults: settings,
   });

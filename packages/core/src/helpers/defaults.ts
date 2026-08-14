@@ -1,9 +1,11 @@
 import {
   DEFAULT_KEN_BURNS,
-  FORMAT_PRESETS,
+  resolveFormat,
   type FormatPreset,
+  type FpsOption,
   type Project,
   type ProjectStatus,
+  type ResolutionTier,
   type Scene,
 } from "../schemas/project.ts";
 import type { Settings } from "../schemas/settings.ts";
@@ -83,6 +85,8 @@ export function createEmptyProject(input: {
   title: string;
   slug: string;
   formatPreset: FormatPreset;
+  resolution: ResolutionTier;
+  fps: FpsOption;
   templateId: string;
   defaults: Settings;
 }): Project {
@@ -95,7 +99,7 @@ export function createEmptyProject(input: {
     status: "draft",
     createdAt: now,
     updatedAt: now,
-    format: FORMAT_PRESETS[input.formatPreset],
+    format: resolveFormat(input.formatPreset, input.resolution, input.fps),
     templateId: input.templateId,
     voice: input.defaults.defaultVoice,
     bgm: {

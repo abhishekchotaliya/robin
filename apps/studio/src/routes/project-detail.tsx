@@ -235,7 +235,7 @@ export function ProjectDetailPage() {
                 <PreviewTab project={project} />
               </TabsContent>
               <TabsContent value="render">
-                <RenderTab project={project} onJobFinished={() => void reloadFromServer()} />
+                <RenderTab project={project} onUpdate={update} onJobFinished={() => void reloadFromServer()} />
               </TabsContent>
             </div>
           </Tabs>

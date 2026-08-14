@@ -7,14 +7,59 @@ export const FormatSchema = z.object({
 });
 export type Format = z.infer<typeof FormatSchema>;
 
-export const FORMAT_PRESETS = {
-  shorts: { width: 1080, height: 1920, fps: 30 },
-  landscape: { width: 1920, height: 1080, fps: 30 },
-  square: { width: 1080, height: 1080, fps: 30 },
-} as const satisfies Record<string, Format>;
-
 export const FormatPresetSchema = z.enum(["shorts", "landscape", "square"]);
 export type FormatPreset = z.infer<typeof FormatPresetSchema>;
+
+export const ResolutionTierSchema = z.enum(["720p", "1080p"]);
+export type ResolutionTier = z.infer<typeof ResolutionTierSchema>;
+
+export const FpsOptionSchema = z.union([z.literal(30), z.literal(60), z.literal(120)]);
+export type FpsOption = z.infer<typeof FpsOptionSchema>;
+
+// Aspect ratio (shape) and resolution (pixel count) are independent choices;
+// fps is independent of both. width/height come from crossing the two.
+const ASPECT_DIMENSIONS: Record<FormatPreset, Record<ResolutionTier, { width: number; height: number }>> = {
+  shorts: {
+    "720p": { width: 720, height: 1280 },
+    "1080p": { width: 1080, height: 1920 },
+  },
+  landscape: {
+    "720p": { width: 1280, height: 720 },
+    "1080p": { width: 1920, height: 1080 },
+  },
+  square: {
+    "720p": { width: 720, height: 720 },
+    "1080p": { width: 1080, height: 1080 },
+  },
+};
+
+export function resolveFormat(aspect: FormatPreset, resolution: ResolutionTier, fps: FpsOption): Format {
+  const { width, height } = ASPECT_DIMENSIONS[aspect][resolution];
+  return { width, height, fps };
+}
+
+/**
+ * Reverse of resolveFormat, for initializing a picker from a stored Format.
+ * Returns null for dimensions that don't match any (aspect, resolution)
+ * combo — e.g. a project.json hand-edited to a custom size. Callers should
+ * degrade gracefully (an unselected picker), not throw.
+ */
+export function describeFormat(
+  format: Format,
+): { aspect: FormatPreset; resolution: ResolutionTier; fps: FpsOption } | null {
+  const fpsResult = FpsOptionSchema.safeParse(format.fps);
+  if (!fpsResult.success) return null;
+
+  for (const aspect of FormatPresetSchema.options) {
+    for (const resolution of ResolutionTierSchema.options) {
+      const dims = ASPECT_DIMENSIONS[aspect][resolution];
+      if (dims.width === format.width && dims.height === format.height) {
+        return { aspect, resolution, fps: fpsResult.data };
+      }
+    }
+  }
+  return null;
+}
 
 export const KenBurnsSchema = z.object({
   enabled: z.boolean(),

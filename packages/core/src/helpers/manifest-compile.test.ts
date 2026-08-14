@@ -12,6 +12,8 @@ function twoSceneTimeline() {
     title: "Captions",
     slug: "captions",
     formatPreset: "shorts",
+    resolution: "1080p",
+    fps: 30,
     templateId: "shorts-basic",
     defaults: settings,
   });

@@ -1,14 +1,22 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { CreateProjectRequestSchema, type CreateProjectRequest, type FormatPreset } from "@app/core";
+import { CreateProjectRequestSchema, type CreateProjectRequest } from "@app/core";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils.ts";
+import { ASPECT_OPTIONS, FPS_OPTIONS, RESOLUTION_OPTIONS } from "@/lib/video-format.ts";
 import { useCreateProject } from "@/hooks/useProjects.ts";
 import { ApiError } from "@/lib/api.ts";
 import { Button } from "@/components/ui/button.tsx";
 import { Input } from "@/components/ui/input.tsx";
 import { Label } from "@/components/ui/label.tsx";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select.tsx";
 import {
   Dialog,
   DialogContent,
@@ -17,12 +25,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog.tsx";
-
-const FORMAT_OPTIONS: { value: FormatPreset; label: string; aspect: string }[] = [
-  { value: "shorts", label: "Shorts", aspect: "9:16" },
-  { value: "landscape", label: "Landscape", aspect: "16:9" },
-  { value: "square", label: "Square", aspect: "1:1" },
-];
 
 export function NewProjectDialog({
   open,
@@ -36,7 +38,13 @@ export function NewProjectDialog({
 
   const form = useForm<CreateProjectRequest>({
     resolver: zodResolver(CreateProjectRequestSchema),
-    defaultValues: { title: "", formatPreset: "shorts", templateId: "shorts-basic" },
+    defaultValues: {
+      title: "",
+      formatPreset: "shorts",
+      resolution: "1080p",
+      fps: 30,
+      templateId: "shorts-basic",
+    },
   });
 
   async function onSubmit(values: CreateProjectRequest) {
@@ -78,7 +86,7 @@ export function NewProjectDialog({
             <div className="space-y-2">
               <Label>Format</Label>
               <div className="grid grid-cols-3 gap-2">
-                {FORMAT_OPTIONS.map((opt) => {
+                {ASPECT_OPTIONS.map((opt) => {
                   const selected = form.watch("formatPreset") === opt.value;
                   return (
                     <button
@@ -98,6 +106,50 @@ export function NewProjectDialog({
                     </button>
                   );
                 })}
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="resolution">Resolution</Label>
+                <Select
+                  value={form.watch("resolution")}
+                  onValueChange={(v) =>
+                    form.setValue("resolution", v as CreateProjectRequest["resolution"], {
+                      shouldValidate: true,
+                    })
+                  }
+                >
+                  <SelectTrigger id="resolution">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {RESOLUTION_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="fps">Frame rate</Label>
+                <Select
+                  value={String(form.watch("fps"))}
+                  onValueChange={(v) => form.setValue("fps", Number(v) as CreateProjectRequest["fps"], { shouldValidate: true })}
+                >
+                  <SelectTrigger id="fps">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {FPS_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={String(opt.value)}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 

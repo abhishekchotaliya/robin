@@ -105,6 +105,8 @@ export async function createProject(input: CreateProjectRequest): Promise<Projec
     title: input.title,
     slug,
     formatPreset: input.formatPreset,
+    resolution: input.resolution,
+    fps: input.fps,
     templateId: input.templateId,
     defaults: settings,
   });
