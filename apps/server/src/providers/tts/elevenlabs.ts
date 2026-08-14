@@ -78,29 +78,38 @@ export const elevenLabsProvider: TTSProvider = {
       );
   },
 
-  async synthesize(text: string, opts: SynthesizeOptions, settings): Promise<ArrayBuffer> {
+  async synthesize(text: string, opts: SynthesizeOptions, settings, signal): Promise<ArrayBuffer> {
     const apiKey = requireApiKey(settings);
     if (!opts.voiceId) {
       throw new ApiHttpError("VALIDATION", "No voice selected. Pick one in the Audio tab first.", 400);
     }
 
-    const res = await fetch(`${TTS_URL}/${encodeURIComponent(opts.voiceId)}?output_format=${OUTPUT_FORMAT}`, {
-      method: "POST",
-      headers: {
-        "xi-api-key": apiKey,
-        "Content-Type": "application/json",
-        Accept: "audio/mpeg",
-      },
-      body: JSON.stringify({
-        text,
-        model_id: MODEL_ID,
-        voice_settings: {
-          stability: opts.stability,
-          similarity_boost: 0.75,
-          speed: opts.speed,
+    let res: Response;
+    try {
+      res = await fetch(`${TTS_URL}/${encodeURIComponent(opts.voiceId)}?output_format=${OUTPUT_FORMAT}`, {
+        method: "POST",
+        headers: {
+          "xi-api-key": apiKey,
+          "Content-Type": "application/json",
+          Accept: "audio/mpeg",
         },
-      }),
-    });
+        body: JSON.stringify({
+          text,
+          model_id: MODEL_ID,
+          voice_settings: {
+            stability: opts.stability,
+            similarity_boost: 0.75,
+            speed: opts.speed,
+          },
+        }),
+        signal,
+      });
+    } catch (err) {
+      if (err instanceof Error && err.name === "AbortError") {
+        throw new ApiHttpError("CONFLICT", "ElevenLabs request timed out or was cancelled.", 409);
+      }
+      throw err;
+    }
     if (!res.ok) await failFromResponse(res, "synthesis");
 
     return res.arrayBuffer();

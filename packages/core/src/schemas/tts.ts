@@ -12,6 +12,17 @@ export const VoiceOptionSchema = z.object({
 });
 export type VoiceOption = z.infer<typeof VoiceOptionSchema>;
 
+// GET /api/settings/tts-providers — lets the UI offer a provider picker
+// without hardcoding provider ids; `configured` mirrors each provider's own
+// isConfigured(settings) so a key-free local provider (e.g. macOS say) is
+// simply always configured.
+export const TTSProviderInfoSchema = z.object({
+  id: z.string(),
+  label: z.string(),
+  configured: z.boolean(),
+});
+export type TTSProviderInfo = z.infer<typeof TTSProviderInfoSchema>;
+
 // POST /api/projects/:id/tts — omit sceneIds to synthesize every scene whose
 // audio is missing or stale.
 export const TtsRequestSchema = z.object({

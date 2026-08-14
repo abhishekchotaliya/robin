@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/select.tsx";
 import { BgmSection } from "@/components/bgm-section.tsx";
 import { CaptionsSection } from "@/components/captions-section.tsx";
-import { useSettings, useUpdateSettings, useVoices } from "@/hooks/useSettings.ts";
+import { useSettings, useTtsProviders, useUpdateSettings, useVoices } from "@/hooks/useSettings.ts";
 import { useJobStream } from "@/hooks/useJob.ts";
 import { api, ApiError, projectFileUrl } from "@/lib/api.ts";
 import { formatDuration } from "@/lib/format.ts";
@@ -78,13 +78,21 @@ export function AudioTab({
   onJobFinished: () => void;
 }) {
   const { data: settings } = useSettings();
-  const configured = settings?.providers.elevenlabs.configured ?? false;
+  const { data: ttsProviders } = useTtsProviders();
+  const currentProvider = ttsProviders?.find((p) => p.id === project.voice.providerId);
+  const configured = currentProvider?.configured ?? false;
   const {
     data: voices,
     isLoading: voicesLoading,
     error: voicesError,
   } = useVoices(project.voice.providerId, configured);
   const [starting, setStarting] = useState(false);
+
+  function changeProvider(providerId: string) {
+    // Voices are provider-specific — carrying the old voiceId over would
+    // silently point at a voice that doesn't exist on the new provider.
+    onUpdate({ voice: { ...project.voice, providerId, voiceId: "" } });
+  }
 
   const { job, watch, isRunning } = useJobStream(project.id, (finished: RenderJob) => {
     if (finished.state === "done") toast.success("Voiceover ready");
@@ -109,7 +117,24 @@ export function AudioTab({
 
   return (
     <div className="space-y-6 p-6">
-      {!configured && <ApiKeyPrompt />}
+      {project.voice.providerId === "elevenlabs" && !configured && <ApiKeyPrompt />}
+
+      <div className="space-y-2">
+        <Label htmlFor="tts-provider">Voice provider</Label>
+        <Select value={project.voice.providerId} onValueChange={changeProvider}>
+          <SelectTrigger id="tts-provider">
+            <SelectValue placeholder="Pick a provider" />
+          </SelectTrigger>
+          <SelectContent>
+            {(ttsProviders ?? []).map((p) => (
+              <SelectItem key={p.id} value={p.id}>
+                {p.label}
+                {!p.configured ? " · needs setup" : ""}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div className="space-y-2">
@@ -144,9 +169,7 @@ export function AudioTab({
             </p>
           )}
           {configured && !voicesLoading && !voicesError && (voices ?? []).length === 0 && (
-            <p className="text-muted-foreground text-xs">
-              No voices in this ElevenLabs account yet.
-            </p>
+            <p className="text-muted-foreground text-xs">No voices available from this provider yet.</p>
           )}
         </div>
 
@@ -169,26 +192,29 @@ export function AudioTab({
             />
           </div>
 
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <Label>Stability</Label>
-              <span className="text-muted-foreground text-xs tabular-nums">
-                {project.voice.stability.toFixed(2)}
-              </span>
+          {/* macOS Say has no expressiveness control — the slider would do nothing. */}
+          {project.voice.providerId === "elevenlabs" && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label>Stability</Label>
+                <span className="text-muted-foreground text-xs tabular-nums">
+                  {project.voice.stability.toFixed(2)}
+                </span>
+              </div>
+              <Slider
+                min={0}
+                max={1}
+                step={0.05}
+                value={[project.voice.stability]}
+                onValueChange={([stability]) =>
+                  onUpdate({ voice: { ...project.voice, stability: stability ?? project.voice.stability } })
+                }
+              />
+              <p className="text-muted-foreground text-xs">
+                Lower is more expressive, higher is more consistent.
+              </p>
             </div>
-            <Slider
-              min={0}
-              max={1}
-              step={0.05}
-              value={[project.voice.stability]}
-              onValueChange={([stability]) =>
-                onUpdate({ voice: { ...project.voice, stability: stability ?? project.voice.stability } })
-              }
-            />
-            <p className="text-muted-foreground text-xs">
-              Lower is more expressive, higher is more consistent.
-            </p>
-          </div>
+          )}
         </div>
       </div>
 

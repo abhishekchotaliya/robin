@@ -19,7 +19,7 @@ export interface TTSProvider {
   /** Whether the settings hold what this provider needs (an API key, usually). */
   isConfigured(settings: Settings): boolean;
   listVoices(settings: Settings): Promise<VoiceOption[]>;
-  synthesize(text: string, opts: SynthesizeOptions, settings: Settings): Promise<ArrayBuffer>;
+  synthesize(text: string, opts: SynthesizeOptions, settings: Settings, signal: AbortSignal): Promise<ArrayBuffer>;
 }
 
 export interface ImageProvider {

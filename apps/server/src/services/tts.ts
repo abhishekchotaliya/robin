@@ -17,6 +17,11 @@ import { probeDurationMs } from "./probe.ts";
  * already matches an existing file is skipped entirely, so fixing a typo in
  * scene 3 re-synthesizes scene 3 and nothing else.
  */
+// A stalled network connection to a provider has no other signal that
+// distinguishes it from "still working" — without this, a hung request sits
+// at 0% forever with no error surfaced (seen in practice).
+const SYNTHESIZE_TIMEOUT_MS = 45_000;
+
 export async function synthesizeProjectAudio(
   projectId: string,
   opts: { sceneIds?: string[]; force?: boolean },
@@ -55,15 +60,24 @@ export async function synthesizeProjectAudio(
       ctx.log(`Scene ${scene.order + 1}: reusing cached audio (${hash}).`);
     } else {
       ctx.log(`Scene ${scene.order + 1}: generating…`);
-      const audio = await provider.synthesize(
-        scene.text,
-        {
-          voiceId: project.voice.voiceId,
-          speed: project.voice.speed,
-          stability: project.voice.stability,
-        },
-        settings,
-      );
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(new Error("timed out")), SYNTHESIZE_TIMEOUT_MS);
+      ctx.onCancel(() => controller.abort(new Error("cancelled")));
+      let audio: ArrayBuffer;
+      try {
+        audio = await provider.synthesize(
+          scene.text,
+          {
+            voiceId: project.voice.voiceId,
+            speed: project.voice.speed,
+            stability: project.voice.stability,
+          },
+          settings,
+          controller.signal,
+        );
+      } finally {
+        clearTimeout(timeout);
+      }
       await Bun.write(absolutePath, audio);
     }
 

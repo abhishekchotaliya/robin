@@ -12,8 +12,10 @@ export function useUpdateSettings() {
     mutationFn: (patch: UpdateSettingsRequest) => api.updateSettings(patch),
     onSuccess: (settings) => {
       queryClient.setQueryData(["settings"], settings);
-      // A newly configured key means the voice list can now be fetched.
+      // A newly configured key means the voice list can now be fetched, and
+      // the provider picker's "configured" state changes too.
       queryClient.invalidateQueries({ queryKey: ["voices"] });
+      queryClient.invalidateQueries({ queryKey: ["tts-providers"] });
     },
   });
 }
@@ -30,4 +32,12 @@ export function useVoices(providerId: string, enabled: boolean) {
 
 export function useHealthChecks() {
   return useQuery({ queryKey: ["health-checks"], queryFn: api.healthChecks });
+}
+
+export function useTtsProviders() {
+  return useQuery({
+    queryKey: ["tts-providers"],
+    queryFn: api.listTtsProviders,
+    staleTime: 5 * 60 * 1000,
+  });
 }

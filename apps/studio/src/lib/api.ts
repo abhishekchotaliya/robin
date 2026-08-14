@@ -13,6 +13,7 @@ import {
   RenderRequestSchema,
   RenderManifestSchema,
   SettingsPublicSchema,
+  TTSProviderInfoSchema,
   TtsRequestSchema,
   UpdateProjectRequestSchema,
   UpdateSettingsRequestSchema,
@@ -114,6 +115,8 @@ export const api = {
 
   listVoices: (providerId: string) =>
     request(`/settings/voices/${providerId}`, z.array(VoiceOptionSchema)),
+
+  listTtsProviders: () => request("/settings/tts-providers", z.array(TTSProviderInfoSchema)),
 
   generateTts: (projectId: string, body: TtsRequest) =>
     request(`/projects/${projectId}/tts`, RenderJobSchema, {

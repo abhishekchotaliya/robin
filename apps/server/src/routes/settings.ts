@@ -28,6 +28,18 @@ export const settingsRoutes = new Hono()
     return c.json(await runHealthChecks());
   })
 
+  // Lets the UI build a provider picker without hardcoding provider ids.
+  .get("/tts-providers", async (c) => {
+    const settings = await getSettings();
+    return c.json(
+      [...ttsProviders.values()].map((provider) => ({
+        id: provider.id,
+        label: provider.label,
+        configured: provider.isConfigured(settings),
+      })),
+    );
+  })
+
   // Voice list for the picker. Lives here rather than under /projects because
   // voices belong to the provider account, not to any one project.
   .get("/voices/:providerId", async (c) => {
