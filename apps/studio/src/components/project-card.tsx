@@ -23,7 +23,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog.tsx";
 import { StatusBadge } from "@/components/status-badge.tsx";
-import { useDeleteProject, useUpdateProject } from "@/hooks/useProjects.ts";
+import { useDeleteProject, useDuplicateProject, useUpdateProject } from "@/hooks/useProjects.ts";
 import { formatDuration, formatRelativeTime } from "@/lib/format.ts";
 import { ApiError } from "@/lib/api.ts";
 
@@ -35,6 +35,7 @@ export function ProjectCard({ project }: { project: ProjectListItem }) {
 
   const updateProject = useUpdateProject(project.id);
   const deleteProject = useDeleteProject();
+  const duplicateProject = useDuplicateProject();
 
   // Radix returns focus to the dropdown trigger when the menu closes, which
   // races the Input's autoFocus and wins — the trigger ends up focused
@@ -147,6 +148,18 @@ export function ProjectCard({ project }: { project: ProjectListItem }) {
             }}
           >
             <DropdownMenuItem onSelect={() => setRenaming(true)}>Rename</DropdownMenuItem>
+            <DropdownMenuItem
+              onSelect={async () => {
+                try {
+                  const copy = await duplicateProject.mutateAsync(project.id);
+                  toast.success(`Duplicated as "${copy.title}"`);
+                } catch (err) {
+                  toast.error(err instanceof ApiError ? err.message : "Couldn't duplicate");
+                }
+              }}
+            >
+              Duplicate
+            </DropdownMenuItem>
             <DropdownMenuItem variant="destructive" onSelect={() => setConfirmDelete(true)}>
               Delete
             </DropdownMenuItem>

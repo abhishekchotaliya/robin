@@ -27,3 +27,7 @@ export function useVoices(providerId: string, enabled: boolean) {
     staleTime: 5 * 60 * 1000,
   });
 }
+
+export function useHealthChecks() {
+  return useQuery({ queryKey: ["health-checks"], queryFn: api.healthChecks });
+}

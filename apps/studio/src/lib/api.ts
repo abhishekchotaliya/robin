@@ -6,6 +6,7 @@ import {
   CreateProjectRequestSchema,
   MixRequestSchema,
   HealthSchema,
+  HealthCheckSchema,
   ProjectListItemSchema,
   ProjectSchema,
   RenderJobSchema,
@@ -84,6 +85,11 @@ export const api = {
       method: "PATCH",
       body: JSON.stringify(UpdateProjectRequestSchema.parse(patch)),
     }),
+
+  duplicateProject: (id: string) =>
+    request(`/projects/${id}/duplicate`, ProjectSchema, { method: "POST" }),
+
+  healthChecks: () => request("/settings/health", z.array(HealthCheckSchema)),
 
   deleteProject: (id: string) => request<void>(`/projects/${id}`, z.void(), { method: "DELETE" }),
 

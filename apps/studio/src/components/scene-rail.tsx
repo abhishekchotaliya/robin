@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   DndContext,
   KeyboardSensor,
@@ -59,6 +59,24 @@ export function SceneRail({
     if (!over) return;
     onReorder(moveScene(project.scenes, String(active.id), String(over.id)));
   }
+
+  // Del deletes the selected scene (behind the same confirm as the trash
+  // icon). Guarded against firing while typing — deleting a character in the
+  // narration textarea must never be mistaken for deleting the scene.
+  useEffect(() => {
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("input, textarea, [contenteditable='true']")) return;
+      if (project.scenes.length <= 1) return;
+      const scene = project.scenes.find((s) => s.id === selectedSceneId);
+      if (!scene) return;
+      e.preventDefault();
+      setPendingDelete(scene);
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [project.scenes, selectedSceneId]);
 
   return (
     <div className="flex h-full flex-col">

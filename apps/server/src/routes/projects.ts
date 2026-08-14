@@ -2,7 +2,14 @@ import { zValidator } from "@hono/zod-validator";
 import { CreateProjectRequestSchema, UpdateProjectRequestSchema } from "@app/core";
 import { Hono } from "hono";
 import { NotFoundError, validationErrorResponse } from "../lib/errors.ts";
-import { createProject, deleteProject, getProject, listProjects, updateProject } from "../store/projects.ts";
+import {
+  createProject,
+  deleteProject,
+  duplicateProject,
+  getProject,
+  listProjects,
+  updateProject,
+} from "../store/projects.ts";
 
 export const projectsRoutes = new Hono()
   .get("/", async (c) => {
@@ -36,6 +43,10 @@ export const projectsRoutes = new Hono()
       return c.json(project);
     },
   )
+
+  .post("/:id/duplicate", async (c) => {
+    return c.json(await duplicateProject(c.req.param("id")), 201);
+  })
 
   .delete("/:id", async (c) => {
     await deleteProject(c.req.param("id"));

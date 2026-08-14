@@ -9,6 +9,16 @@ export const HealthSchema = z.object({
 });
 export type Health = z.infer<typeof HealthSchema>;
 
+// One native-tool health check for the settings screen.
+export const HealthCheckSchema = z.object({
+  name: z.string(),
+  ok: z.boolean(),
+  detail: z.string(),
+  /** What to do about it, when there is something to do. */
+  hint: z.string().nullable(),
+});
+export type HealthCheck = z.infer<typeof HealthCheckSchema>;
+
 // GET /api/projects — lightweight, no scenes/media payload.
 export const ProjectListItemSchema = z.object({
   id: z.string(),

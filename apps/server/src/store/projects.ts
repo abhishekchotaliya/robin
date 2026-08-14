@@ -1,4 +1,4 @@
-import { mkdir, readdir, rm } from "node:fs/promises";
+import { cp, mkdir, readdir, rm } from "node:fs/promises";
 import { join } from "node:path";
 import {
   createEmptyProject,
@@ -13,7 +13,7 @@ import {
 } from "@app/core";
 import { PROJECTS_DIR } from "../config.ts";
 import { NotFoundError } from "../lib/errors.ts";
-import { pathExists, readJson, writeJsonAtomic } from "../lib/fsx.ts";
+import { dirExists, pathExists, readJson, writeJsonAtomic } from "../lib/fsx.ts";
 import { projectMutex } from "../lib/mutex.ts";
 import { getSettings } from "./settings.ts";
 
@@ -78,7 +78,12 @@ export async function listProjects(): Promise<ProjectListItem[]> {
       updatedAt: project.updatedAt,
       sceneCount: project.scenes.length,
       estimatedDurationMs,
-      thumbnailUrl: project.lastRender ? `/files/${project.slug}/renders/thumbnail.jpg` : null,
+      // Only claim a thumbnail when one is really on disk: a project
+      // rendered before poster frames existed has a lastRender but no
+      // image, and pointing at it would show a broken card.
+      thumbnailUrl: (await pathExists(join(projectDir(slug), "renders", "thumbnail.jpg")))
+        ? `/files/${project.slug}/renders/thumbnail.jpg`
+        : null,
     });
   }
   items.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -152,6 +157,58 @@ export async function updateProject(
     await writeJsonAtomic(join(projectDir(slug), PROJECT_FILE), validated);
     return validated;
   });
+}
+
+/**
+ * Copies a project into a new one. Everything the user made or paid for
+ * comes along — assets, generated voiceover, captions — so the duplicate is
+ * immediately usable rather than needing every step re-run. Renders are
+ * deliberately left behind: the copy hasn't been rendered, and claiming
+ * otherwise would show a stale video as its own.
+ */
+export async function duplicateProject(id: string): Promise<Project> {
+  const sourceSlug = await findProjectSlugById(id);
+  if (!sourceSlug) throw new NotFoundError(`project ${id} not found`);
+  const source = await tryReadProject(sourceSlug);
+  if (!source) throw new NotFoundError(`project ${id} not found`);
+
+  const taken = new Set(await listProjectSlugs());
+  const title = `${source.title} copy`;
+  const slug = uniqueSlug(slugify(title), taken);
+  const targetDir = projectDir(slug);
+
+  await mkdir(targetDir, { recursive: true });
+  for (const sub of ["assets", "audio/vo", "captions", "renders", ".cache"]) {
+    await mkdir(join(targetDir, sub), { recursive: true });
+  }
+
+  // cp -R for the reusable inputs; skip renders and .cache, which belong to
+  // the original's output and would be misleading here.
+  for (const sub of ["assets", "audio", "captions"]) {
+    const from = join(projectDir(sourceSlug), sub);
+    if (await dirExists(from)) {
+      await cp(from, join(targetDir, sub), { recursive: true });
+    }
+  }
+  const assetsIndex = join(projectDir(sourceSlug), "assets.json");
+  if (await pathExists(assetsIndex)) {
+    await cp(assetsIndex, join(targetDir, "assets.json"));
+  }
+
+  const now = new Date().toISOString();
+  const copy: Project = {
+    ...source,
+    id: crypto.randomUUID(),
+    slug,
+    title,
+    createdAt: now,
+    updatedAt: now,
+    lastRender: null,
+  };
+  copy.status = deriveStatus(copy);
+
+  await writeJsonAtomic(join(targetDir, PROJECT_FILE), ProjectSchema.parse(copy));
+  return copy;
 }
 
 export async function deleteProject(id: string): Promise<void> {

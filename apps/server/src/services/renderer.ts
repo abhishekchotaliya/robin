@@ -10,11 +10,15 @@ import { ApiHttpError, NotFoundError } from "../lib/errors.ts";
 import { pathExists } from "../lib/fsx.ts";
 import type { JobContext } from "../jobs/queue.ts";
 import { readCaptions } from "./captions.ts";
+import { extractPosterFrame } from "./ffmpeg.ts";
 import { MASTER_FILE } from "./mix.ts";
 import { listAssets } from "../store/assets.ts";
 import { getProject, projectDir, updateProject } from "../store/projects.ts";
 
 const COMPOSITION_ID = "ShortsBasic";
+
+// Referenced by the projects list as the card thumbnail.
+export const THUMBNAIL_FILE = "thumbnail.jpg";
 
 // packages/video's registerRoot entry, resolved relative to this file so it
 // works regardless of the process's cwd.
@@ -154,6 +158,14 @@ export async function renderProject(
 
   const durationMs = Date.now() - startedAt;
   ctx.log(`Rendered in ${(durationMs / 1000).toFixed(1)}s → ${relativePath}`);
+
+  // Poster frame for the project card. A failure here must not fail the
+  // render — the video is already on disk and is what the user asked for.
+  try {
+    await extractPosterFrame(outputLocation, join(rendersDir, THUMBNAIL_FILE));
+  } catch (err) {
+    console.error("[renderer] could not extract a poster frame:", err);
+  }
 
   // Recording the hash is what lets an unchanged re-render short-circuit and
   // what flips the project's derived status to "rendered".

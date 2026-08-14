@@ -153,6 +153,13 @@ All four capability interfaces live in `types.ts` (TTS implemented; Image/Video/
 
 `tts/elevenlabs.ts` is the reference implementation. Two things worth copying: it maps provider HTTP failures onto our own error codes with messages a user can act on (401 → "check the key in Settings", 429 → rate limit) instead of leaking a raw response into a 500; and note the endpoints straddle versions — synthesis is `/v1/text-to-speech/{voice_id}`, voice listing is `/v2/voices`. Not a typo.
 
+## Everything past the render (Phase 9)
+
+- **Thumbnails aren't stored in `project.json` — they're derived.** `listProjects()` checks whether `renders/thumbnail.jpg` actually exists on disk before returning a `thumbnailUrl`; it never infers one from `lastRender`. A project rendered before poster-frame extraction existed has a `lastRender` but no file, and claiming a URL anyway is a broken image on every card. `extractPosterFrame()` (`services/ffmpeg.ts`) seeks 0.5s into the output, deliberately past frame 0 — scenes fade in from black, so frame 0 is a black rectangle. A failed extraction logs and moves on; it must never fail the render, since the video the user asked for is already on disk.
+- **Health checks execute the binary, they don't just check it exists.** The failure mode this catches in practice is a file that's present but won't run — wrong architecture, or missing its executable bit because a package manager skipped a `postinstall`. Both produce a confusing mid-render error otherwise; surfacing them in Settings turns that into an actionable message before the user ever presses render.
+- **`duplicateProject` copies assets, voiceover and captions but not `renders/` or `.cache/`.** Those belong to the *original's* output — carrying them over would let a stale video pass as the copy's own before the copy has ever been rendered.
+- Scene deletion via the `Delete`/`Backspace` key reuses the exact same confirm dialog as the trash icon (`scene-rail.tsx`) — guarded so it never fires while an input, textarea, or `contenteditable` has focus, or deleting a character in the narration box would delete the scene instead.
+
 ## Verification
 
 ```bash

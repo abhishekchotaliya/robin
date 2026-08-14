@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
-import { Film } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Film, Settings } from "lucide-react";
 import { Button } from "@/components/ui/button.tsx";
 import { Skeleton } from "@/components/ui/skeleton.tsx";
 import { ThemeToggle } from "@/components/theme-toggle.tsx";
@@ -38,6 +39,11 @@ export function ProjectsListPage() {
       <header className="border-border/50 sticky top-0 z-10 flex items-center justify-between border-b bg-background/80 px-6 py-4 backdrop-blur">
         <h1 className="text-lg font-semibold">Faceless Video Studio</h1>
         <div className="flex items-center gap-2">
+          <Button variant="ghost" size="icon" asChild aria-label="Settings">
+            <Link to="/settings">
+              <Settings className="h-4 w-4" />
+            </Link>
+          </Button>
           <ThemeToggle />
           <Button onClick={() => setNewProjectOpen(true)}>New Project</Button>
         </div>
