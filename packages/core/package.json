@@ -1,0 +1,20 @@
+{
+  "name": "@app/core",
+  "private": true,
+  "version": "0.0.1",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "bun test"
+  },
+  "dependencies": {
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2",
+    "@types/bun": "latest"
+  }
+}

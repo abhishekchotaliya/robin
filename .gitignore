@@ -141,3 +141,15 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 .vite/
+
+# Bun
+bun.lockb
+
+# Project-local video data (default projects root is outside repo, but guard anyway)
+.whisper/
+*.tsbuildinfo
+
+# SQLite (lives outside the repo at ~/VideoStudio/studio.db; guard anyway)
+*.db
+*.db-shm
+*.db-wal
